@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import dynamic from "next/dynamic";
 import {
   SUPPORTED_LANGUAGES,
   Language,
@@ -15,14 +16,29 @@ import {
   Cpu,
   Clock,
   Code2,
-  Sparkles,
   AlertCircle,
   FileCode2,
   Keyboard,
-  Settings2,
-  Sliders,
-  ChevronDown
+  ChevronDown,
+  Palette,
+  AlignLeft,
+  Eye,
+  EyeOff,
+  Sparkles
 } from "lucide-react";
+
+// Dynamically import Monaco Editor to ensure SSR safety
+const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex-1 flex items-center justify-center bg-[#1e1e1e] text-[#ffe600] font-mono text-sm">
+      <div className="flex items-center gap-2">
+        <span className="w-3 h-3 rounded-full bg-[#ffe600] animate-ping" />
+        <span>Loading VS Code Editor...</span>
+      </div>
+    </div>
+  ),
+});
 
 interface ExecutionResult {
   stdout?: string | null;
@@ -37,6 +53,22 @@ interface ExecutionResult {
   };
 }
 
+interface EditorTheme {
+  id: string;
+  name: string;
+  isCustom?: boolean;
+}
+
+const THEMES: EditorTheme[] = [
+  { id: "vs-dark", name: "VS Code Dark+" },
+  { id: "light", name: "VS Code Light+" },
+  { id: "hc-black", name: "High Contrast Dark" },
+  { id: "hc-light", name: "High Contrast Light" },
+  { id: "devnix-cyberpunk", name: "⚡ Devnix Cyberpunk", isCustom: true },
+  { id: "devnix-monokai", name: "🎨 Monokai Pro", isCustom: true },
+  { id: "devnix-nord", name: "❄️ Nord Arctic", isCustom: true },
+];
+
 export default function DevnixStudio() {
   const [selectedLanguage, setSelectedLanguage] = useState<Language>(
     SUPPORTED_LANGUAGES[0]
@@ -45,11 +77,94 @@ export default function DevnixStudio() {
   const [stdin, setStdin] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"output" | "stdin" | "info">("output");
   const [fontSize, setFontSize] = useState<number>(14);
+  const [currentTheme, setCurrentTheme] = useState<string>("vs-dark");
+  const [showMinimap, setShowMinimap] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [result, setResult] = useState<ExecutionResult | null>(null);
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
   const [copiedOutput, setCopiedOutput] = useState<boolean>(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
+
+  // Setup Monaco themes and shortcuts on mount
+  const handleEditorWillMount = (monaco: any) => {
+    monacoRef.current = monaco;
+
+    // Define Custom Cyberpunk Theme
+    monaco.editor.defineTheme("devnix-cyberpunk", {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "comment", foreground: "6272a4", fontStyle: "italic" },
+        { token: "keyword", foreground: "ff5277", fontStyle: "bold" },
+        { token: "identifier", foreground: "00f0ff" },
+        { token: "string", foreground: "ffe600" },
+        { token: "number", foreground: "4ade80" },
+        { token: "type", foreground: "c084fc" },
+      ],
+      colors: {
+        "editor.background": "#121216",
+        "editor.foreground": "#f8f8f2",
+        "editorCursor.foreground": "#ffe600",
+        "editor.lineHighlightBackground": "#1e1e24",
+        "editorLineNumber.foreground": "#505060",
+        "editorLineNumber.activeForeground": "#00f0ff",
+        "editor.selectionBackground": "#303050",
+      },
+    });
+
+    // Define Monokai Pro Theme
+    monaco.editor.defineTheme("devnix-monokai", {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "comment", foreground: "75715e" },
+        { token: "keyword", foreground: "f92672", fontStyle: "bold" },
+        { token: "string", foreground: "e6db74" },
+        { token: "number", foreground: "ae81ff" },
+        { token: "type", foreground: "66d9ef" },
+        { token: "function", foreground: "a6e22e" },
+      ],
+      colors: {
+        "editor.background": "#272822",
+        "editor.foreground": "#f8f8f2",
+        "editorCursor.foreground": "#f8f8f0",
+        "editor.lineHighlightBackground": "#3e3d32",
+        "editorLineNumber.foreground": "#90908a",
+      },
+    });
+
+    // Define Nord Theme
+    monaco.editor.defineTheme("devnix-nord", {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "comment", foreground: "616e88", fontStyle: "italic" },
+        { token: "keyword", foreground: "81a1c1", fontStyle: "bold" },
+        { token: "string", foreground: "a3be8c" },
+        { token: "number", foreground: "b48ead" },
+        { token: "type", foreground: "8fbcbb" },
+        { token: "function", foreground: "88c0d0" },
+      ],
+      colors: {
+        "editor.background": "#2e3440",
+        "editor.foreground": "#d8dee9",
+        "editorCursor.foreground": "#eceff4",
+        "editor.lineHighlightBackground": "#3b4252",
+        "editorLineNumber.foreground": "#4c566a",
+      },
+    });
+  };
+
+  const handleEditorDidMount = (editor: any, monaco: any) => {
+    editorRef.current = editor;
+
+    // Register Ctrl+Enter / Cmd+Enter shortcut
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+      runCode();
+    });
+  };
 
   // Update code boilerplate when language changes
   const handleLanguageChange = (langId: number) => {
@@ -64,6 +179,13 @@ export default function DevnixStudio() {
   // Reset current template
   const handleResetCode = () => {
     setCode(selectedLanguage.defaultCode);
+  };
+
+  // Format code in Monaco
+  const handleFormatCode = () => {
+    if (editorRef.current) {
+      editorRef.current.getAction("editor.action.formatDocument")?.run();
+    }
   };
 
   // Copy code to clipboard
@@ -84,24 +206,6 @@ export default function DevnixStudio() {
     setTimeout(() => setCopiedOutput(false), 2000);
   };
 
-  // Handle Tab key and shortcuts inside textarea
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Tab") {
-      e.preventDefault();
-      const target = e.currentTarget;
-      const start = target.selectionStart;
-      const end = target.selectionEnd;
-      const newCode = code.substring(0, start) + "    " + code.substring(end);
-      setCode(newCode);
-      setTimeout(() => {
-        target.selectionStart = target.selectionEnd = start + 4;
-      }, 0);
-    } else if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      e.preventDefault();
-      runCode();
-    }
-  };
-
   // Execute code via API
   const runCode = async () => {
     if (isLoading) return;
@@ -111,13 +215,15 @@ export default function DevnixStudio() {
       status: { id: 2, description: "Executing in sandbox..." },
     });
 
+    const codeToRun = editorRef.current ? editorRef.current.getValue() : code;
+
     try {
       const response = await fetch("/api/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           language_id: selectedLanguage.id,
-          source_code: code,
+          source_code: codeToRun,
           stdin: stdin,
         }),
       });
@@ -133,10 +239,6 @@ export default function DevnixStudio() {
       setIsLoading(false);
     }
   };
-
-  // Line count calculations
-  const lineCount = code.split("\n").length;
-  const lineNumbers = Array.from({ length: lineCount }, (_, i) => i + 1);
 
   // Status color helper for Neobrutalist badges
   const getStatusBadge = () => {
@@ -202,6 +304,7 @@ export default function DevnixStudio() {
 
         {/* Center: Language Selector & Quick Controls */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Language Selector */}
           <div className="relative flex items-center">
             <select
               value={selectedLanguage.id}
@@ -217,6 +320,24 @@ export default function DevnixStudio() {
             <ChevronDown className="w-4 h-4 absolute right-2.5 pointer-events-none stroke-[2.5]" />
           </div>
 
+          {/* VS Code Theme Selector */}
+          <div className="relative flex items-center">
+            <Palette className="w-4 h-4 absolute left-2.5 pointer-events-none stroke-[2.5] text-neutral-600" />
+            <select
+              value={currentTheme}
+              onChange={(e) => setCurrentTheme(e.target.value)}
+              className="neo-select text-xs py-2 pl-8 pr-8 appearance-none bg-white cursor-pointer hover:bg-neutral-50 font-bold"
+            >
+              {THEMES.map((theme) => (
+                <option key={theme.id} value={theme.id}>
+                  {theme.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 absolute right-2.5 pointer-events-none stroke-[2.5]" />
+          </div>
+
+          {/* Reset Template Button */}
           <button
             onClick={handleResetCode}
             title="Reset code template"
@@ -247,10 +368,10 @@ export default function DevnixStudio() {
         </div>
       </header>
 
-      {/* 🚀 MAIN SPLIT WORKSPACE: LEFT (EDITOR) & RIGHT (OUTPUT) */}
+      {/* 🚀 MAIN SPLIT WORKSPACE: LEFT (VS CODE EDITOR) & RIGHT (OUTPUT) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 items-stretch">
         {/* ========================================================================= */}
-        {/* LEFT COLUMN: CODE EDITOR (7 Columns on large screens)                     */}
+        {/* LEFT COLUMN: MONACO / VS CODE EDITOR (7 Columns on large screens)         */}
         {/* ========================================================================= */}
         <div className="lg:col-span-7 flex flex-col neo-box overflow-hidden bg-[#ffffff]">
           {/* Editor Header Bar */}
@@ -265,10 +386,39 @@ export default function DevnixStudio() {
                 <FileCode2 className="w-3.5 h-3.5 text-black" />
                 <span>main.{selectedLanguage.extension}</span>
               </div>
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 bg-[#00f0ff] border border-black rounded shadow-[1px_1px_0px_#000]">
+                VS CODE ENGINE
+              </span>
             </div>
 
             {/* Quick Editor Actions */}
             <div className="flex items-center gap-2">
+              {/* Minimap Toggle */}
+              <button
+                onClick={() => setShowMinimap(!showMinimap)}
+                title={showMinimap ? "Hide Minimap" : "Show Minimap"}
+                className={`neo-btn p-1.5 text-xs flex items-center gap-1 ${
+                  showMinimap ? "bg-[#ffe600]" : "bg-white"
+                }`}
+              >
+                {showMinimap ? (
+                  <Eye className="w-3.5 h-3.5 stroke-[2.5]" />
+                ) : (
+                  <EyeOff className="w-3.5 h-3.5 stroke-[2.5]" />
+                )}
+                <span className="text-[10px] font-bold hidden xl:inline">Map</span>
+              </button>
+
+              {/* Format Code */}
+              <button
+                onClick={handleFormatCode}
+                title="Format Code"
+                className="neo-btn bg-white hover:bg-neutral-100 p-1.5 text-xs flex items-center gap-1"
+              >
+                <AlignLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span className="text-[10px] font-bold hidden sm:inline">Format</span>
+              </button>
+
               {/* Font Size Selector */}
               <div className="flex items-center gap-1 bg-white border-2 border-black px-2 py-0.5 rounded text-xs font-bold shadow-[2px_2px_0px_#000]">
                 <span className="text-[10px] text-neutral-500">SIZE:</span>
@@ -280,7 +430,7 @@ export default function DevnixStudio() {
                 </button>
                 <span className="font-mono text-xs">{fontSize}</span>
                 <button
-                  onClick={() => setFontSize(Math.min(22, fontSize + 1))}
+                  onClick={() => setFontSize(Math.min(24, fontSize + 1))}
                   className="hover:text-[#ff5277] px-1 font-mono font-black"
                 >
                   +
@@ -314,49 +464,45 @@ export default function DevnixStudio() {
             </div>
           </div>
 
-          {/* Editor Body with Line Numbers */}
-          <div className="flex-1 flex overflow-hidden min-h-[450px] lg:min-h-[580px] bg-[#1e1e1e] text-[#f8f8f2] font-mono">
-            {/* Line Numbers Column */}
-            <div
-              className="py-4 pl-3 pr-2 text-right select-none bg-[#181818] border-r-2 border-[#333333] text-neutral-500 font-mono"
-              style={{ fontSize: `${fontSize}px`, lineHeight: "1.5" }}
-            >
-              {lineNumbers.map((n) => (
-                <div key={n} className="leading-[1.5]">
-                  {n}
-                </div>
-              ))}
-            </div>
-
-            {/* Code Textarea */}
-            <div className="flex-1 relative flex">
-              <textarea
-                ref={textareaRef}
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                onKeyDown={handleKeyDown}
-                spellCheck={false}
-                placeholder="Write or paste your code here..."
-                style={{
-                  fontSize: `${fontSize}px`,
-                  lineHeight: "1.5",
-                  tabSize: 4,
-                }}
-                className="w-full h-full p-4 bg-transparent text-[#00f0ff] font-mono resize-none outline-none leading-[1.5] selection:bg-[#ffe600] selection:text-black caret-[#ffe600]"
-              />
-            </div>
+          {/* Monaco / VS Code Editor Container */}
+          <div className="flex-1 min-h-[480px] lg:min-h-[590px] relative">
+            <MonacoEditor
+              height="100%"
+              language={selectedLanguage.monacoLang}
+              theme={currentTheme}
+              value={code}
+              onChange={(value) => setCode(value || "")}
+              beforeMount={handleEditorWillMount}
+              onMount={handleEditorDidMount}
+              options={{
+                fontSize: fontSize,
+                fontFamily: "var(--font-geist-mono), 'JetBrains Mono', 'Fira Code', Consolas, monospace",
+                fontLigatures: true,
+                minimap: { enabled: showMinimap },
+                scrollBeyondLastLine: false,
+                smoothScrolling: true,
+                cursorBlinking: "smooth",
+                cursorSmoothCaretAnimation: "on",
+                bracketPairColorization: { enabled: true },
+                autoClosingBrackets: "always",
+                autoClosingQuotes: "always",
+                formatOnPaste: true,
+                tabSize: 4,
+                lineNumbersMinChars: 3,
+                padding: { top: 12, bottom: 12 },
+              }}
+            />
           </div>
 
           {/* Editor Footer / Status Bar */}
           <div className="bg-[#f0ede6] border-t-[2.5px] border-black px-4 py-1.5 flex items-center justify-between text-xs font-bold font-mono text-neutral-700">
             <div className="flex items-center gap-4">
               <span>LANG: {selectedLanguage.label.toUpperCase()}</span>
-              <span>LINES: {lineCount}</span>
-              <span>CHARS: {code.length}</span>
+              <span>THEME: {currentTheme.toUpperCase()}</span>
             </div>
             <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-neutral-500">
               <Keyboard className="w-3.5 h-3.5" />
-              <span>Tab = 4 spaces</span>
+              <span>VS Code Monaco Engine (Ctrl+Enter to run)</span>
             </div>
           </div>
         </div>
@@ -434,7 +580,7 @@ export default function DevnixStudio() {
           </div>
 
           {/* Output Content Area */}
-          <div className="flex-1 flex flex-col p-4 bg-[#fffdfa] overflow-auto min-h-[450px] lg:min-h-[580px]">
+          <div className="flex-1 flex flex-col p-4 bg-[#fffdfa] overflow-auto min-h-[480px] lg:min-h-[590px]">
             {/* TAB 1: TERMINAL OUTPUT */}
             {activeTab === "output" && (
               <div className="flex-1 flex flex-col gap-3">
@@ -562,8 +708,8 @@ export default function DevnixStudio() {
                     ⚡ DEVNIX ENGINE & JUDGE0
                   </h3>
                   <p className="font-bold text-neutral-800 mt-1">
-                    Powered by high-performance Judge0 Community Edition runner
-                    with multi-language isolation sandbox.
+                    Powered by VS Code Monaco Editor and high-performance Judge0
+                    remote code execution sandbox.
                   </p>
                 </div>
 
@@ -578,10 +724,10 @@ export default function DevnixStudio() {
                   </div>
                   <div className="neo-box-sm bg-white p-2.5">
                     <span className="text-[10px] text-neutral-500 block font-bold">
-                      VERSION
+                      EDITOR THEME
                     </span>
                     <span className="font-bold text-sm text-black">
-                      {selectedLanguage.version}
+                      {THEMES.find((t) => t.id === currentTheme)?.name || currentTheme}
                     </span>
                   </div>
                   <div className="neo-box-sm bg-white p-2.5">
@@ -602,19 +748,25 @@ export default function DevnixStudio() {
 
                 <div className="neo-box-sm bg-white p-3 space-y-2">
                   <h4 className="font-black uppercase text-black text-xs">
-                    Keyboard Shortcuts
+                    Editor Capabilities
                   </h4>
                   <div className="space-y-1 font-mono text-[11px]">
                     <div className="flex justify-between">
-                      <span className="text-neutral-600">Run Program:</span>
+                      <span className="text-neutral-600">Run Code:</span>
                       <kbd className="bg-neutral-100 border border-black px-1.5 py-0.5 rounded font-bold">
                         Ctrl + Enter
                       </kbd>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-neutral-600">Insert Indentation:</span>
+                      <span className="text-neutral-600">Auto Format:</span>
                       <kbd className="bg-neutral-100 border border-black px-1.5 py-0.5 rounded font-bold">
-                        Tab
+                        Shift + Alt + F
+                      </kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-neutral-600">IntelliSense Autocomplete:</span>
+                      <kbd className="bg-neutral-100 border border-black px-1.5 py-0.5 rounded font-bold">
+                        Ctrl + Space
                       </kbd>
                     </div>
                   </div>

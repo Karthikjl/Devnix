@@ -27,6 +27,14 @@
 ## ✨ Features
 
 - **🎨 Neobrutalist Design System**: Bold black borders, vibrant pop colors (neon yellow, electric cyan, coral pink), and tactile drop-shadow interactions.
+- **💻 VS Code Monaco Editor Engine**: Powered by the official Monaco editor that powers Visual Studio Code with IntelliSense autocomplete, bracket pair colorization, smooth cursor animation, auto-closing brackets, and format document.
+- **🎭 7+ Editor Themes**:
+  - `VS Code Dark+` (Classic dark)
+  - `VS Code Light+` (Clean light)
+  - `High Contrast Dark` & `High Contrast Light`
+  - `⚡ Devnix Cyberpunk` (Custom high-contrast neon theme)
+  - `🎨 Monokai Pro`
+  - `❄️ Nord Arctic`
 - **🌐 11+ Supported Languages**:
   - Python 3.8+
   - JavaScript (Node.js)

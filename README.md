@@ -26,6 +26,9 @@
 
 ## ✨ Features
 
+- **⚡ Dual Execution Modes (Selectable)**:
+  - **🟢 Real-Time Interactive Terminal**: Streams output live in real time using Server-Sent Events (SSE). When your program requests input (`input()`, `cin`), an interactive prompt `❯` appears directly in the terminal where you can type and send values live! Includes a `■ STOP PROCESS` button to terminate long-running processes.
+  - **📦 Batch Stdin Mode**: Classic competitive programming mode where test inputs are pre-filled in the `INPUT (STDIN)` tab and executed in batch with time and memory stats.
 - **🎨 Neobrutalist Design System**: Bold black borders, vibrant pop colors (neon yellow, electric cyan, coral pink), and tactile drop-shadow interactions.
 - **💻 VS Code Monaco Editor Engine**: Powered by the official Monaco editor that powers Visual Studio Code with IntelliSense autocomplete, bracket pair colorization, smooth cursor animation, auto-closing brackets, and format document.
 - **🎭 7+ Editor Themes**:

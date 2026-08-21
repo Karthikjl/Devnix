@@ -24,6 +24,10 @@ import {
   AlignLeft,
   Eye,
   EyeOff,
+  Square,
+  Send,
+  Radio,
+  Layers,
   Sparkles
 } from "lucide-react";
 
@@ -56,7 +60,6 @@ interface ExecutionResult {
 interface EditorTheme {
   id: string;
   name: string;
-  isCustom?: boolean;
 }
 
 const THEMES: EditorTheme[] = [
@@ -64,9 +67,9 @@ const THEMES: EditorTheme[] = [
   { id: "light", name: "VS Code Light+" },
   { id: "hc-black", name: "High Contrast Dark" },
   { id: "hc-light", name: "High Contrast Light" },
-  { id: "devnix-cyberpunk", name: "⚡ Devnix Cyberpunk", isCustom: true },
-  { id: "devnix-monokai", name: "🎨 Monokai Pro", isCustom: true },
-  { id: "devnix-nord", name: "❄️ Nord Arctic", isCustom: true },
+  { id: "devnix-cyberpunk", name: "⚡ Devnix Cyberpunk" },
+  { id: "devnix-monokai", name: "🎨 Monokai Pro" },
+  { id: "devnix-nord", name: "❄️ Nord Arctic" },
 ];
 
 export default function DevnixStudio() {
@@ -75,17 +78,34 @@ export default function DevnixStudio() {
   );
   const [code, setCode] = useState<string>(SUPPORTED_LANGUAGES[0].defaultCode);
   const [stdin, setStdin] = useState<string>("");
+  const [executionMode, setExecutionMode] = useState<"interactive" | "batch">("interactive");
   const [activeTab, setActiveTab] = useState<"output" | "stdin" | "info">("output");
   const [fontSize, setFontSize] = useState<number>(14);
   const [currentTheme, setCurrentTheme] = useState<string>("vs-dark");
   const [showMinimap, setShowMinimap] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isProcessRunning, setIsProcessRunning] = useState<boolean>(false);
   const [result, setResult] = useState<ExecutionResult | null>(null);
+  
+  // Real-time terminal output stream & interactive input
+  const [terminalLogs, setTerminalLogs] = useState<Array<{ type: "stdout" | "stderr" | "status" | "input" | "exit"; text: string }>>([]);
+  const [realtimeInput, setRealtimeInput] = useState<string>("");
+  const [currentSessionId, setCurrentSessionId] = useState<string>("");
+
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
   const [copiedOutput, setCopiedOutput] = useState<boolean>(false);
 
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+  const terminalEndRef = useRef<HTMLDivElement>(null);
+  const realtimeInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-scroll terminal to bottom when new logs arrive
+  useEffect(() => {
+    if (terminalEndRef.current) {
+      terminalEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [terminalLogs]);
 
   // Setup Monaco themes and shortcuts on mount
   const handleEditorWillMount = (monaco: any) => {
@@ -162,7 +182,7 @@ export default function DevnixStudio() {
 
     // Register Ctrl+Enter / Cmd+Enter shortcut
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-      runCode();
+      handleRun();
     });
   };
 
@@ -173,6 +193,7 @@ export default function DevnixStudio() {
       setSelectedLanguage(lang);
       setCode(lang.defaultCode);
       setResult(null);
+      setTerminalLogs([]);
     }
   };
 
@@ -197,17 +218,151 @@ export default function DevnixStudio() {
 
   // Copy output to clipboard
   const handleCopyOutput = () => {
-    const textToCopy =
-      (result?.stdout || "") +
-      (result?.stderr ? "\n" + result.stderr : "") +
-      (result?.compile_output ? "\n" + result.compile_output : "");
-    navigator.clipboard.writeText(textToCopy);
+    if (executionMode === "interactive") {
+      const allText = terminalLogs.map((l) => l.text).join("");
+      navigator.clipboard.writeText(allText);
+    } else {
+      const textToCopy =
+        (result?.stdout || "") +
+        (result?.stderr ? "\n" + result.stderr : "") +
+        (result?.compile_output ? "\n" + result.compile_output : "");
+      navigator.clipboard.writeText(textToCopy);
+    }
     setCopiedOutput(true);
     setTimeout(() => setCopiedOutput(false), 2000);
   };
 
-  // Execute code via API
-  const runCode = async () => {
+  // Primary Run Dispatcher
+  const handleRun = () => {
+    if (executionMode === "interactive") {
+      runInteractiveStreaming();
+    } else {
+      runBatchCode();
+    }
+  };
+
+  // 1. RUN IN REAL-TIME INTERACTIVE STREAMING MODE
+  const runInteractiveStreaming = async () => {
+    if (isProcessRunning) return;
+
+    const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    setCurrentSessionId(sessionId);
+    setIsProcessRunning(true);
+    setIsLoading(true);
+    setActiveTab("output");
+    setTerminalLogs([
+      { type: "status", text: `⚡ Initializing ${selectedLanguage.label} in Real-Time Interactive Terminal...\n` },
+    ]);
+
+    const codeToRun = editorRef.current ? editorRef.current.getValue() : code;
+
+    try {
+      const response = await fetch("/api/execute/interactive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          language_id: selectedLanguage.id,
+          source_code: codeToRun,
+        }),
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP Error ${response.status}`);
+      }
+
+      setIsLoading(false);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      // Focus real-time input prompt
+      setTimeout(() => {
+        realtimeInputRef.current?.focus();
+      }, 100);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.substring(6));
+              setTerminalLogs((prev) => [...prev, data]);
+              if (data.type === "exit") {
+                setIsProcessRunning(false);
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch (err: any) {
+      setTerminalLogs((prev) => [
+        ...prev,
+        { type: "stderr", text: `\nExecution Error: ${err.message}\n` },
+      ]);
+    } finally {
+      setIsProcessRunning(false);
+      setIsLoading(false);
+    }
+  };
+
+  // Send real-time input to running process
+  const handleSendRealtimeInput = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!realtimeInput || !isProcessRunning || !currentSessionId) return;
+
+    const inputToSend = realtimeInput;
+    setRealtimeInput("");
+
+    // Show input in terminal
+    setTerminalLogs((prev) => [
+      ...prev,
+      { type: "input", text: `${inputToSend}\n` },
+    ]);
+
+    try {
+      await fetch("/api/execute/input", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: currentSessionId,
+          input: inputToSend,
+        }),
+      });
+    } catch (err: any) {
+      setTerminalLogs((prev) => [
+        ...prev,
+        { type: "stderr", text: `\nFailed to send input: ${err.message}\n` },
+      ]);
+    }
+  };
+
+  // Stop running interactive process
+  const handleStopProcess = async () => {
+    if (!currentSessionId) return;
+    try {
+      await fetch("/api/execute/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: currentSessionId }),
+      });
+      setIsProcessRunning(false);
+      setTerminalLogs((prev) => [
+        ...prev,
+        { type: "status", text: `\n[Process stopped by user]\n` },
+      ]);
+    } catch {}
+  };
+
+  // 2. RUN IN BATCH STDIN MODE
+  const runBatchCode = async () => {
     if (isLoading) return;
     setIsLoading(true);
     setActiveTab("output");
@@ -242,32 +397,38 @@ export default function DevnixStudio() {
 
   // Status color helper for Neobrutalist badges
   const getStatusBadge = () => {
+    if (executionMode === "interactive") {
+      if (isProcessRunning) {
+        return (
+          <span className="bg-[#22c55e] text-black border-2 border-black px-2.5 py-0.5 rounded text-xs font-black animate-pulse shadow-[2px_2px_0px_#000] flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-black animate-ping" />
+            LIVE STREAMING
+          </span>
+        );
+      }
+      return (
+        <span className="bg-[#ffe600] text-black border-2 border-black px-2.5 py-0.5 rounded text-xs font-black shadow-[2px_2px_0px_#000]">
+          TERMINAL IDLE
+        </span>
+      );
+    }
+
     if (!result || !result.status) return null;
     const statusId = result.status.id;
 
     if (statusId === 3) {
-      // Accepted
       return (
         <span className="bg-[#4ade80] text-black border-2 border-black px-2.5 py-0.5 rounded text-xs font-black shadow-[2px_2px_0px_#000]">
           ✓ {result.status.description.toUpperCase()}
         </span>
       );
     } else if (statusId === 2 || statusId === 1) {
-      // In Queue / Processing
       return (
         <span className="bg-[#ffe600] text-black border-2 border-black px-2.5 py-0.5 rounded text-xs font-black animate-pulse shadow-[2px_2px_0px_#000]">
           ⏳ {result.status.description.toUpperCase()}
         </span>
       );
-    } else if (statusId === 5 || statusId === 6) {
-      // Time Limit / Compilation Error
-      return (
-        <span className="bg-[#ff9800] text-black border-2 border-black px-2.5 py-0.5 rounded text-xs font-black shadow-[2px_2px_0px_#000]">
-          ⚠️ {result.status.description.toUpperCase()}
-        </span>
-      );
     } else {
-      // Error
       return (
         <span className="bg-[#ff5277] text-white border-2 border-black px-2.5 py-0.5 rounded text-xs font-black shadow-[2px_2px_0px_#000]">
           ✕ {result.status.description.toUpperCase()}
@@ -297,13 +458,40 @@ export default function DevnixStudio() {
               </span>
             </div>
             <p className="text-xs font-bold text-neutral-600 hidden sm:block">
-              Neobrutalist Online Code Engine & Judge
+              Neobrutalist Online Code Engine & Live Terminal
             </p>
           </div>
         </div>
 
-        {/* Center: Language Selector & Quick Controls */}
+        {/* Center: Language Selector, Theme, Mode Toggle */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Execution Mode Toggle: Interactive vs Batch */}
+          <div className="flex items-center bg-[#f0ede6] border-2 border-black p-0.5 rounded-md shadow-[2px_2px_0px_#000]">
+            <button
+              onClick={() => setExecutionMode("interactive")}
+              className={`px-2.5 py-1 text-xs font-bold rounded transition-all flex items-center gap-1.5 ${
+                executionMode === "interactive"
+                  ? "bg-[#22c55e] text-black font-black shadow-[1px_1px_0px_#000]"
+                  : "text-neutral-600 hover:text-black"
+              }`}
+            >
+              <Radio className="w-3 h-3" />
+              <span>Real-Time Input</span>
+            </button>
+
+            <button
+              onClick={() => setExecutionMode("batch")}
+              className={`px-2.5 py-1 text-xs font-bold rounded transition-all flex items-center gap-1.5 ${
+                executionMode === "batch"
+                  ? "bg-[#00f0ff] text-black font-black shadow-[1px_1px_0px_#000]"
+                  : "text-neutral-600 hover:text-black"
+              }`}
+            >
+              <Layers className="w-3 h-3" />
+              <span>Batch Stdin</span>
+            </button>
+          </div>
+
           {/* Language Selector */}
           <div className="relative flex items-center">
             <select
@@ -337,7 +525,7 @@ export default function DevnixStudio() {
             <ChevronDown className="w-4 h-4 absolute right-2.5 pointer-events-none stroke-[2.5]" />
           </div>
 
-          {/* Reset Template Button */}
+          {/* Reset Template */}
           <button
             onClick={handleResetCode}
             title="Reset code template"
@@ -348,23 +536,33 @@ export default function DevnixStudio() {
           </button>
         </div>
 
-        {/* Right: Primary Run Button */}
+        {/* Right: Primary Run / Stop Buttons */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={runCode}
-            disabled={isLoading}
-            className="neo-btn bg-[#ffe600] hover:bg-[#ffde59] px-5 py-2.5 text-sm md:text-base font-black flex items-center gap-2 shadow-[4px_4px_0px_#000]"
-          >
-            <Play
-              className={`w-4 h-4 stroke-[3] fill-black ${
-                isLoading ? "animate-spin" : ""
-              }`}
-            />
-            <span>{isLoading ? "RUNNING..." : "RUN CODE"}</span>
-            <kbd className="hidden lg:inline-block bg-black text-white text-[10px] font-mono px-1.5 py-0.5 rounded border border-black ml-1">
-              Ctrl+Enter
-            </kbd>
-          </button>
+          {isProcessRunning ? (
+            <button
+              onClick={handleStopProcess}
+              className="neo-btn bg-[#ff5277] text-white hover:bg-red-600 px-5 py-2.5 text-sm md:text-base font-black flex items-center gap-2 shadow-[4px_4px_0px_#000]"
+            >
+              <Square className="w-4 h-4 fill-white stroke-[2]" />
+              <span>STOP PROCESS</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleRun}
+              disabled={isLoading}
+              className="neo-btn bg-[#ffe600] hover:bg-[#ffde59] px-5 py-2.5 text-sm md:text-base font-black flex items-center gap-2 shadow-[4px_4px_0px_#000]"
+            >
+              <Play
+                className={`w-4 h-4 stroke-[3] fill-black ${
+                  isLoading ? "animate-spin" : ""
+                }`}
+              />
+              <span>{isLoading ? "LAUNCHING..." : "RUN CODE"}</span>
+              <kbd className="hidden lg:inline-block bg-black text-white text-[10px] font-mono px-1.5 py-0.5 rounded border border-black ml-1">
+                Ctrl+Enter
+              </kbd>
+            </button>
+          )}
         </div>
       </header>
 
@@ -498,7 +696,7 @@ export default function DevnixStudio() {
           <div className="bg-[#f0ede6] border-t-[2.5px] border-black px-4 py-1.5 flex items-center justify-between text-xs font-bold font-mono text-neutral-700">
             <div className="flex items-center gap-4">
               <span>LANG: {selectedLanguage.label.toUpperCase()}</span>
-              <span>THEME: {currentTheme.toUpperCase()}</span>
+              <span>MODE: {executionMode.toUpperCase()}</span>
             </div>
             <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-neutral-500">
               <Keyboard className="w-3.5 h-3.5" />
@@ -524,23 +722,25 @@ export default function DevnixStudio() {
               >
                 <div className="flex items-center gap-1">
                   <Terminal className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>OUTPUT</span>
+                  <span>{executionMode === "interactive" ? "LIVE TERMINAL" : "OUTPUT"}</span>
                 </div>
               </button>
 
-              <button
-                onClick={() => setActiveTab("stdin")}
-                className={`px-3 py-1 text-xs font-black rounded-md border-2 border-black transition-all ${
-                  activeTab === "stdin"
-                    ? "bg-[#ffe600] shadow-[2px_2px_0px_#000] -translate-y-0.5"
-                    : "bg-white hover:bg-neutral-100"
-                }`}
-              >
-                <span>INPUT (STDIN)</span>
-                {stdin.trim().length > 0 && (
-                  <span className="ml-1 w-2 h-2 inline-block rounded-full bg-[#ff5277]" />
-                )}
-              </button>
+              {executionMode === "batch" && (
+                <button
+                  onClick={() => setActiveTab("stdin")}
+                  className={`px-3 py-1 text-xs font-black rounded-md border-2 border-black transition-all ${
+                    activeTab === "stdin"
+                      ? "bg-[#ffe600] shadow-[2px_2px_0px_#000] -translate-y-0.5"
+                      : "bg-white hover:bg-neutral-100"
+                  }`}
+                >
+                  <span>INPUT (STDIN)</span>
+                  {stdin.trim().length > 0 && (
+                    <span className="ml-1 w-2 h-2 inline-block rounded-full bg-[#ff5277]" />
+                  )}
+                </button>
+              )}
 
               <button
                 onClick={() => setActiveTab("info")}
@@ -556,7 +756,7 @@ export default function DevnixStudio() {
 
             {/* Right Tools in Output Header */}
             <div className="flex items-center gap-1.5">
-              {activeTab === "output" && result && (
+              {activeTab === "output" && (
                 <button
                   onClick={handleCopyOutput}
                   title="Copy Output"
@@ -570,7 +770,10 @@ export default function DevnixStudio() {
                 </button>
               )}
               <button
-                onClick={() => setResult(null)}
+                onClick={() => {
+                  setResult(null);
+                  setTerminalLogs([]);
+                }}
                 title="Clear Output"
                 className="neo-btn bg-white hover:bg-neutral-100 p-1.5 text-xs"
               >
@@ -580,10 +783,10 @@ export default function DevnixStudio() {
           </div>
 
           {/* Output Content Area */}
-          <div className="flex-1 flex flex-col p-4 bg-[#fffdfa] overflow-auto min-h-[480px] lg:min-h-[590px]">
-            {/* TAB 1: TERMINAL OUTPUT */}
+          <div className="flex-1 flex flex-col p-4 bg-[#fffdfa] overflow-hidden min-h-[480px] lg:min-h-[590px]">
+            {/* TAB 1: TERMINAL OUTPUT (HANDLES BOTH INTERACTIVE AND BATCH) */}
             {activeTab === "output" && (
-              <div className="flex-1 flex flex-col gap-3">
+              <div className="flex-1 flex flex-col gap-3 h-full">
                 {/* Status & Metrics Bar */}
                 <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b-2 border-black/20">
                   <div className="flex items-center gap-2">
@@ -597,7 +800,7 @@ export default function DevnixStudio() {
                     )}
                   </div>
 
-                  {result && (result.time || result.memory) && (
+                  {executionMode === "batch" && result && (result.time || result.memory) && (
                     <div className="flex items-center gap-2">
                       {result.time && (
                         <div className="flex items-center gap-1 bg-white border-2 border-black px-2 py-0.5 rounded text-xs font-mono font-bold shadow-[2px_2px_0px_#000]">
@@ -615,66 +818,146 @@ export default function DevnixStudio() {
                   )}
                 </div>
 
-                {/* Console Output Screen */}
-                <div className="flex-1 flex flex-col gap-3 font-mono text-sm">
-                  {/* Standard Output */}
-                  {result?.stdout && (
-                    <div className="neo-box-sm bg-[#121212] text-[#4ade80] p-3 overflow-x-auto whitespace-pre-wrap selection:bg-[#ffe600] selection:text-black">
-                      <div className="text-[10px] text-neutral-400 font-bold uppercase pb-1 mb-2 border-b border-neutral-700 flex items-center justify-between">
-                        <span>Standard Output (stdout)</span>
-                        <span>SUCCESS</span>
-                      </div>
-                      {result.stdout}
+                {/* 1A. REAL-TIME INTERACTIVE TERMINAL VIEW */}
+                {executionMode === "interactive" ? (
+                  <div className="flex-1 flex flex-col neo-box-sm bg-[#121212] overflow-hidden border-2 border-black">
+                    {/* Live Stream Logs */}
+                    <div className="flex-1 p-3 font-mono text-sm overflow-y-auto whitespace-pre-wrap selection:bg-[#ffe600] selection:text-black">
+                      {terminalLogs.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-center p-6 text-neutral-500 gap-2">
+                          <Radio className="w-8 h-8 text-[#22c55e] animate-pulse" />
+                          <p className="font-bold text-neutral-300">
+                            Real-Time Interactive Terminal Ready
+                          </p>
+                          <p className="text-xs text-neutral-500 max-w-xs">
+                            Click <strong>RUN CODE</strong> to start live execution. Any inputs requested by your code will be typed directly into the prompt below in real time!
+                          </p>
+                        </div>
+                      ) : (
+                        terminalLogs.map((log, idx) => {
+                          if (log.type === "input") {
+                            return (
+                              <span key={idx} className="text-[#00f0ff] font-bold">
+                                {log.text}
+                              </span>
+                            );
+                          } else if (log.type === "stderr") {
+                            return (
+                              <span key={idx} className="text-[#ff5277]">
+                                {log.text}
+                              </span>
+                            );
+                          } else if (log.type === "status" || log.type === "exit") {
+                            return (
+                              <span key={idx} className="text-[#ffe600] text-xs font-bold block my-1">
+                                {log.text}
+                              </span>
+                            );
+                          } else {
+                            return (
+                              <span key={idx} className="text-[#4ade80]">
+                                {log.text}
+                              </span>
+                            );
+                          }
+                        })
+                      )}
+                      <div ref={terminalEndRef} />
                     </div>
-                  )}
 
-                  {/* Standard Error (stderr) */}
-                  {result?.stderr && (
-                    <div className="neo-box-sm bg-[#2b0f14] border-red-900 text-[#ff758f] p-3 overflow-x-auto whitespace-pre-wrap">
-                      <div className="text-[10px] text-red-400 font-bold uppercase pb-1 mb-2 border-b border-red-800 flex items-center gap-1.5">
-                        <AlertCircle className="w-3 h-3" />
-                        <span>Execution / System Error (stderr)</span>
+                    {/* Live Inline Input Bar */}
+                    <form
+                      onSubmit={handleSendRealtimeInput}
+                      className="bg-[#1c1c1c] border-t-2 border-[#333333] p-2 flex items-center gap-2"
+                    >
+                      <span className="text-[#00f0ff] font-mono font-black text-sm pl-1">
+                        ❯
+                      </span>
+                      <input
+                        ref={realtimeInputRef}
+                        type="text"
+                        value={realtimeInput}
+                        onChange={(e) => setRealtimeInput(e.target.value)}
+                        disabled={!isProcessRunning}
+                        placeholder={
+                          isProcessRunning
+                            ? "Type input & press Enter..."
+                            : "Start program to enter input in real time..."
+                        }
+                        className="flex-1 bg-transparent text-[#ffffff] font-mono text-sm outline-none placeholder:text-neutral-600 disabled:opacity-40"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!isProcessRunning || !realtimeInput.trim()}
+                        className="bg-[#00f0ff] hover:bg-cyan-400 text-black border border-black px-3 py-1 rounded text-xs font-black flex items-center gap-1 disabled:opacity-30 cursor-pointer"
+                      >
+                        <span>Send</span>
+                        <Send className="w-3 h-3 stroke-[2.5]" />
+                      </button>
+                    </form>
+                  </div>
+                ) : (
+                  /* 1B. BATCH STDIN OUTPUT VIEW */
+                  <div className="flex-1 flex flex-col gap-3 font-mono text-sm overflow-y-auto">
+                    {/* Standard Output */}
+                    {result?.stdout && (
+                      <div className="neo-box-sm bg-[#121212] text-[#4ade80] p-3 overflow-x-auto whitespace-pre-wrap selection:bg-[#ffe600] selection:text-black">
+                        <div className="text-[10px] text-neutral-400 font-bold uppercase pb-1 mb-2 border-b border-neutral-700 flex items-center justify-between">
+                          <span>Standard Output (stdout)</span>
+                          <span>SUCCESS</span>
+                        </div>
+                        {result.stdout}
                       </div>
-                      {result.stderr}
-                    </div>
-                  )}
+                    )}
 
-                  {/* Compilation Output */}
-                  {result?.compile_output && (
-                    <div className="neo-box-sm bg-[#261706] border-orange-900 text-[#ffb04f] p-3 overflow-x-auto whitespace-pre-wrap">
-                      <div className="text-[10px] text-orange-400 font-bold uppercase pb-1 mb-2 border-b border-orange-800">
-                        Compiler Output
+                    {/* Standard Error (stderr) */}
+                    {result?.stderr && (
+                      <div className="neo-box-sm bg-[#2b0f14] border-red-900 text-[#ff758f] p-3 overflow-x-auto whitespace-pre-wrap">
+                        <div className="text-[10px] text-red-400 font-bold uppercase pb-1 mb-2 border-b border-red-800 flex items-center gap-1.5">
+                          <AlertCircle className="w-3 h-3" />
+                          <span>Execution / System Error (stderr)</span>
+                        </div>
+                        {result.stderr}
                       </div>
-                      {result.compile_output}
-                    </div>
-                  )}
+                    )}
 
-                  {/* Initial Empty State */}
-                  {!result && (
-                    <div className="flex-1 flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-neutral-300 rounded-lg text-neutral-500 gap-3 my-auto">
-                      <div className="w-12 h-12 rounded-xl bg-[#ffe600] border-2 border-black flex items-center justify-center text-black shadow-[3px_3px_0px_#000]">
-                        <Play className="w-6 h-6 fill-black ml-0.5" />
+                    {/* Compilation Output */}
+                    {result?.compile_output && (
+                      <div className="neo-box-sm bg-[#261706] border-orange-900 text-[#ffb04f] p-3 overflow-x-auto whitespace-pre-wrap">
+                        <div className="text-[10px] text-orange-400 font-bold uppercase pb-1 mb-2 border-b border-orange-800">
+                          Compiler Output
+                        </div>
+                        {result.compile_output}
                       </div>
-                      <div>
-                        <p className="font-black text-black text-base">
-                          No output yet
-                        </p>
-                        <p className="text-xs font-semibold text-neutral-600 max-w-xs mt-1">
-                          Click &quot;RUN CODE&quot; or press{" "}
-                          <kbd className="bg-neutral-200 px-1 py-0.5 rounded border border-black text-black">
-                            Ctrl+Enter
-                          </kbd>{" "}
-                          to execute your program.
-                        </p>
+                    )}
+
+                    {/* Empty State */}
+                    {!result && (
+                      <div className="flex-1 flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-neutral-300 rounded-lg text-neutral-500 gap-3 my-auto">
+                        <div className="w-12 h-12 rounded-xl bg-[#ffe600] border-2 border-black flex items-center justify-center text-black shadow-[3px_3px_0px_#000]">
+                          <Play className="w-6 h-6 fill-black ml-0.5" />
+                        </div>
+                        <div>
+                          <p className="font-black text-black text-base">
+                            Batch Output Ready
+                          </p>
+                          <p className="text-xs font-semibold text-neutral-600 max-w-xs mt-1">
+                            Click &quot;RUN CODE&quot; or press{" "}
+                            <kbd className="bg-neutral-200 px-1 py-0.5 rounded border border-black text-black">
+                              Ctrl+Enter
+                            </kbd>{" "}
+                            to execute with pre-set inputs.
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
-            {/* TAB 2: STDIN INPUT */}
-            {activeTab === "stdin" && (
+            {/* TAB 2: STDIN INPUT (BATCH MODE) */}
+            {activeTab === "stdin" && executionMode === "batch" && (
               <div className="flex-1 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-black uppercase text-neutral-700">
@@ -702,18 +985,25 @@ export default function DevnixStudio() {
 
             {/* TAB 3: SYSTEM & ENGINE INFO */}
             {activeTab === "info" && (
-              <div className="flex-1 flex flex-col gap-4 text-xs">
+              <div className="flex-1 flex flex-col gap-4 text-xs overflow-y-auto">
                 <div className="neo-box-sm bg-[#ffe600] p-3">
                   <h3 className="font-black text-sm uppercase text-black">
-                    ⚡ DEVNIX ENGINE & JUDGE0
+                    ⚡ DEVNIX ENGINE DUAL MODES
                   </h3>
                   <p className="font-bold text-neutral-800 mt-1">
-                    Powered by VS Code Monaco Editor and high-performance Judge0
-                    remote code execution sandbox.
+                    Supports both Real-Time Interactive Streaming Terminal and Batch Stdin execution.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 font-mono">
+                  <div className="neo-box-sm bg-white p-2.5">
+                    <span className="text-[10px] text-neutral-500 block font-bold">
+                      ACTIVE MODE
+                    </span>
+                    <span className="font-bold text-sm text-black uppercase">
+                      {executionMode}
+                    </span>
+                  </div>
                   <div className="neo-box-sm bg-white p-2.5">
                     <span className="text-[10px] text-neutral-500 block font-bold">
                       ACTIVE LANGUAGE
@@ -732,17 +1022,11 @@ export default function DevnixStudio() {
                   </div>
                   <div className="neo-box-sm bg-white p-2.5">
                     <span className="text-[10px] text-neutral-500 block font-bold">
-                      LANGUAGE ID
+                      LIVE STREAMING
                     </span>
-                    <span className="font-bold text-sm text-black">
-                      #{selectedLanguage.id}
+                    <span className="font-bold text-sm text-green-600">
+                      SSE ACTIVE
                     </span>
-                  </div>
-                  <div className="neo-box-sm bg-white p-2.5">
-                    <span className="text-[10px] text-neutral-500 block font-bold">
-                      DEFAULT TIMEOUT
-                    </span>
-                    <span className="font-bold text-sm text-black">5.0s</span>
                   </div>
                 </div>
 
@@ -752,13 +1036,13 @@ export default function DevnixStudio() {
                   </h4>
                   <div className="space-y-1 font-mono text-[11px]">
                     <div className="flex justify-between">
-                      <span className="text-neutral-600">Run Code:</span>
+                      <span className="text-neutral-600">Run / Launch Code:</span>
                       <kbd className="bg-neutral-100 border border-black px-1.5 py-0.5 rounded font-bold">
                         Ctrl + Enter
                       </kbd>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-neutral-600">Auto Format:</span>
+                      <span className="text-neutral-600">Auto Format Document:</span>
                       <kbd className="bg-neutral-100 border border-black px-1.5 py-0.5 rounded font-bold">
                         Shift + Alt + F
                       </kbd>
@@ -778,8 +1062,8 @@ export default function DevnixStudio() {
           {/* Output Footer Bar */}
           <div className="bg-[#f0ede6] border-t-[2.5px] border-black px-4 py-1.5 flex items-center justify-between text-xs font-bold font-mono text-neutral-700">
             <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#22c55e] inline-block animate-pulse" />
-              <span>JUDGE0 SERVER: 2358</span>
+              <span className={`w-2 h-2 rounded-full ${isProcessRunning ? "bg-[#22c55e] animate-ping" : "bg-neutral-400"} inline-block`} />
+              <span>{executionMode === "interactive" ? "LIVE PTY TERMINAL" : "BATCH ENGINE"}</span>
             </span>
             <span className="text-[11px] text-neutral-500">DEVNIX v1.0</span>
           </div>

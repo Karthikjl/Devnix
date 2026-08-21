@@ -18,20 +18,15 @@ export const SUPPORTED_LANGUAGES: Language[] = [
     extension: "py",
     monacoLang: "python",
     badgeColor: "#ffe600",
-    defaultCode: `# Python 3.8 Code Runner on Devnix
-def greet(name):
-    return f"Hello, {name}! Welcome to Devnix ⚡"
+    defaultCode: `# Python 3 Interactive Playground on Devnix
+print("⚡ Welcome to Devnix Studio! ⚡")
 
-def fibonacci(n):
-    a, b = 0, 1
-    result = []
-    for _ in range(n):
-        result.append(a)
-        a, b = b, a + b
-    return result
+name = input("👉 Enter your name: ")
+print(f"Hello, {name}! Welcome aboard.")
 
-print(greet("Developer"))
-print("Fibonacci Sequence (first 10):", fibonacci(10))
+num = int(input("👉 Enter a number to calculate its square: "))
+print(f"Result: {num}² = {num * num}")
+print("✓ Live execution finished successfully!")
 `,
   },
   {

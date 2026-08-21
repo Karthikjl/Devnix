@@ -1,0 +1,67 @@
+# ==============================================================================
+# DEVNIX - Global .gitignore
+# ==============================================================================
+
+# Node / Next.js Dependencies & Builds
+node_modules/
+web/node_modules/
+.next/
+web/.next/
+out/
+web/out/
+build/
+dist/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# TypeScript & Framework Builds
+*.tsbuildinfo
+next-env.d.ts
+web/next-env.d.ts
+.vercel/
+
+# Logs & Debugging
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.log
+
+# Environment Variables & Secrets
+.env
+.env*.local
+.env.production
+.env.staging
+*.pem
+
+# Testing & Coverage
+coverage/
+web/coverage/
+.nyc_output/
+
+# Temporary Execution / Sandbox artifacts
+tmp/
+temp/
+devnix_*
+*.tmp
+*.exe
+*.o
+*.obj
+
+# Operating System & IDE Files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo

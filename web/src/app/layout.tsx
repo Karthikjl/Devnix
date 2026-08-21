@@ -15,6 +15,11 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "DEVNIX — Neobrutalist Code Studio & Online Judge",
   description: "Execute code instantly in 60+ languages with Judge0 and Neobrutalist UI aesthetics.",
+  icons: {
+    icon: "/icon.png",
+    shortcut: "/icon.png",
+    apple: "/icon.png",
+  },
 };
 
 export default function RootLayout({

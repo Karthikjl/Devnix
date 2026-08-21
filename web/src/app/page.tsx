@@ -180,9 +180,11 @@ export default function DevnixStudio() {
       <header className="neo-box-lg bg-white p-3 md:p-4 flex flex-wrap items-center justify-between gap-4">
         {/* Brand Logo & Product Name */}
         <div className="flex items-center gap-3">
-          <div className="bg-[#ffe600] border-2 border-black p-2 rounded-lg shadow-[3px_3px_0px_#000] flex items-center justify-center">
-            <Code2 className="w-6 h-6 stroke-[2.5]" />
-          </div>
+          <img
+            src="/logo.png"
+            alt="Devnix Logo"
+            className="w-11 h-11 object-contain rounded-lg border-2 border-black shadow-[3px_3px_0px_#000] bg-[#fffdfa]"
+          />
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl md:text-3xl font-black tracking-tight text-black">

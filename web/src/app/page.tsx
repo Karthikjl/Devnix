@@ -72,12 +72,44 @@ const THEMES: EditorTheme[] = [
   { id: "devnix-nord", name: "❄️ Nord Arctic", dotColor: "#88c0d0" },
 ];
 
+interface ToastNotification {
+  id: string;
+  type: "error" | "warning" | "success" | "info";
+  title: string;
+  message?: string;
+}
+
 export default function DevnixStudio() {
   const [availableLanguages, setAvailableLanguages] = useState<Language[]>(SUPPORTED_LANGUAGES);
   const [selectedLanguage, setSelectedLanguage] = useState<Language>(
     SUPPORTED_LANGUAGES[0]
   );
   const selectedLanguageRef = useRef<Language>(SUPPORTED_LANGUAGES[0]);
+
+  // Toast notification state (Max 2 with smooth animations)
+  const [toasts, setToasts] = useState<ToastNotification[]>([]);
+  const [exitingToastIds, setExitingToastIds] = useState<Set<string>>(new Set());
+
+  const dismissToast = (id: string) => {
+    setExitingToastIds((prev) => new Set(prev).add(id));
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+      setExitingToastIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }, 280);
+  };
+
+  const showToast = (type: "error" | "warning" | "success" | "info", title: string, message?: string) => {
+    const id = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    // Keep max 2 active toasts (take the last 1, append new 1)
+    setToasts((prev) => [...prev.slice(-1), { id, type, title, message }]);
+    setTimeout(() => {
+      dismissToast(id);
+    }, 4000);
+  };
 
   // Keep ref continuously synchronized
   useEffect(() => {
@@ -351,6 +383,7 @@ export default function DevnixStudio() {
     try {
       localStorage.setItem(`devnix_code_${activeLang.id}`, defaultCode);
     } catch {}
+    showToast("info", "Template Reset", `Restored default ${activeLang.label} code.`);
     setTimeout(() => {
       isSwitchingLanguageRef.current = false;
     }, 100);
@@ -362,16 +395,44 @@ export default function DevnixStudio() {
     }
   };
 
-  const handleCopyCode = () => {
+  const safeCopyToClipboard = async (text: string) => {
+    if (!text) return;
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {}
+
+    // Fallback for LAN IP / non-secure contexts
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-999999px";
+      textArea.style.top = "-999999px";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const successful = document.execCommand("copy");
+      document.body.removeChild(textArea);
+      return successful;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleCopyCode = async () => {
     const codeToCopy = editorRef.current ? editorRef.current.getValue() : code;
     if (codeToCopy) {
-      navigator.clipboard.writeText(codeToCopy);
+      await safeCopyToClipboard(codeToCopy);
       setCopiedCode(true);
+      showToast("success", "Code Copied", "Source code copied to clipboard.");
       setTimeout(() => setCopiedCode(false), 2000);
     }
   };
 
-  const handleCopyOutput = () => {
+  const handleCopyOutput = async () => {
     let textToCopy = "";
     if (executionMode === "interactive") {
       textToCopy = terminalLogs.map((l) => l.text).join("");
@@ -382,8 +443,9 @@ export default function DevnixStudio() {
         (result?.compile_output ? "\n" + result.compile_output : "");
     }
     if (textToCopy.trim()) {
-      navigator.clipboard.writeText(textToCopy);
+      await safeCopyToClipboard(textToCopy);
       setCopiedOutput(true);
+      showToast("success", "Output Copied", "Console output copied to clipboard.");
       setTimeout(() => setCopiedOutput(false), 2000);
     }
   };
@@ -449,9 +511,15 @@ export default function DevnixStudio() {
               const data = JSON.parse(line.substring(6));
               if (data.type === "stdout" || data.type === "stderr") {
                 setTerminalLogs((prev) => [...prev, data]);
+                if (data.type === "stderr" && data.text.trim()) {
+                  showToast("error", "Execution Error", data.text.trim().substring(0, 100));
+                }
               }
               if (data.type === "exit") {
                 setIsProcessRunning(false);
+                if (data.code !== 0) {
+                  showToast("error", "Process Exited with Error", `Exit code ${data.code}`);
+                }
               }
             } catch {}
           }
@@ -462,6 +530,7 @@ export default function DevnixStudio() {
         ...prev,
         { type: "stderr", text: `\nError: ${err.message}\n` },
       ]);
+      showToast("error", "Execution Failed", err.message);
     } finally {
       setIsProcessRunning(false);
       setIsLoading(false);
@@ -494,6 +563,7 @@ export default function DevnixStudio() {
         ...prev,
         { type: "stderr", text: `\nFailed to send input: ${err.message}\n` },
       ]);
+      showToast("error", "Input Error", err.message);
     }
   };
 
@@ -506,6 +576,7 @@ export default function DevnixStudio() {
         body: JSON.stringify({ sessionId: currentSessionId }),
       });
       setIsProcessRunning(false);
+      showToast("warning", "Process Stopped", "Interactive execution terminated.");
     } catch {}
   };
 
@@ -534,11 +605,20 @@ export default function DevnixStudio() {
 
       const data = await response.json();
       setResult(data);
+
+      if (data.status?.id !== 3) {
+        showToast(
+          "error",
+          data.status?.description || "Compilation Error",
+          (data.stderr || data.compile_output || data.message || "Execution failed").substring(0, 100)
+        );
+      }
     } catch (err: any) {
       setResult({
         status: { id: 13, description: "Execution Error" },
         stderr: err.message || "Failed to communicate with execution server.",
       });
+      showToast("error", "Server Error", err.message);
     } finally {
       setIsLoading(false);
     }
@@ -565,7 +645,7 @@ export default function DevnixStudio() {
               </span>
             </div>
             <p className="text-[10px] font-bold text-neutral-500 hidden sm:block leading-tight mt-0.5">
-Online Code Engine & Live Terminal
+Online Code Engine
             </p>
           </div>
         </div>
@@ -629,36 +709,49 @@ Online Code Engine & Live Terminal
 
             {/* Custom Neobrutalist Language Menu */}
             {isLangOpen && (
-              <div className="absolute top-full left-0 mt-1.5 w-64 bg-white border-[2.5px] border-black rounded-lg shadow-[4px_4px_0px_#000] z-50 p-2 max-h-80 overflow-y-auto">
-                {/* 🔍 Neobrutalist Search Bar */}
-                <div className="sticky top-0 bg-white pb-2 pt-0.5 border-b border-neutral-200 z-10">
+              <div className="absolute top-full left-0 mt-2 w-72 bg-[#fffdfa] border-[2.5px] border-black rounded-xl shadow-[5px_5px_0px_#000] z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                {/* 🔍 Premium Neobrutalist Search Bar Header */}
+                <div className="bg-[#f6f3eb] p-2.5 border-b-[2px] border-black">
+                  <div className="flex items-center justify-between mb-1.5 px-0.5">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-neutral-600">
+                      Select Compiler
+                    </span>
+                    <span className="bg-[#ffe600] text-black border border-black text-[9px] font-black font-mono px-1.5 py-0.5 rounded shadow-[1px_1px_0px_#000]">
+                      {availableLanguages.length} RUNTIMES
+                    </span>
+                  </div>
+
                   <div className="relative flex items-center">
-                    <Search className="w-3.5 h-3.5 absolute left-2 text-neutral-500 pointer-events-none stroke-[2.5]" />
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 text-black pointer-events-none stroke-[2.5]" />
                     <input
                       ref={langSearchInputRef}
                       type="text"
                       value={langSearch}
                       onChange={(e) => setLangSearch(e.target.value)}
-                      placeholder="Search language..."
-                      className="w-full bg-[#f6f3eb] text-black font-mono text-xs font-bold pl-7 pr-6 py-1.5 rounded border-[1.5px] border-black outline-none focus:bg-white focus:border-black"
+                      placeholder="Search (e.g. py, java, c, rust)..."
+                      className="w-full bg-white text-black font-mono text-xs font-bold pl-8 pr-7 py-2 rounded-lg border-[2px] border-black shadow-[2px_2px_0px_#000] outline-none transition-all placeholder:text-neutral-400 placeholder:font-sans placeholder:font-medium focus:shadow-[3px_3px_0px_#00f0ff] focus:border-black"
                     />
-                    {langSearch && (
+                    {langSearch ? (
                       <button
                         type="button"
                         onClick={() => {
                           setLangSearch("");
                           langSearchInputRef.current?.focus();
                         }}
-                        className="absolute right-2 text-neutral-400 hover:text-black"
+                        className="absolute right-2.5 text-neutral-400 hover:text-black p-0.5 hover:bg-neutral-100 rounded transition-colors"
                       >
                         <X className="w-3.5 h-3.5 stroke-[2.5]" />
                       </button>
+                    ) : (
+                      <span className="absolute right-2 text-[9px] font-mono text-neutral-400 border border-neutral-300 rounded px-1 pointer-events-none">
+                        /
+                      </span>
                     )}
                   </div>
                 </div>
 
                 {/* Filtered Languages List */}
-                <div className="pt-1.5 space-y-0.5">
+                <div className="p-1.5 max-h-64 overflow-y-auto space-y-1">
                   {availableLanguages
                     .filter((lang) => {
                       if (!langSearch.trim()) return true;
@@ -678,21 +771,25 @@ Online Code Engine & Live Terminal
                           onClick={() => {
                             handleLanguageChange(lang);
                             setLangSearch("");
+                            setIsLangOpen(false);
                           }}
-                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs font-bold transition-all text-left ${
+                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-bold transition-all text-left border-[2px] ${
                             isSelected
-                              ? "bg-[#ffe600] text-black font-black border border-black shadow-[1.5px_1.5px_0px_#000]"
-                              : "hover:bg-[#00f0ff] hover:text-black text-neutral-800"
+                              ? "bg-[#ffe600] text-black font-black border-black shadow-[2px_2px_0px_#000]"
+                              : "border-transparent hover:border-black hover:bg-[#00f0ff]/25 hover:shadow-[2px_2px_0px_#000] text-neutral-900 bg-white"
                           }`}
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
                             <span
-                              className="w-2 h-2 rounded-full border border-black"
+                              className="w-2.5 h-2.5 rounded-full border-[1.5px] border-black shrink-0 shadow-[1px_1px_0px_#000]"
                               style={{ backgroundColor: lang.badgeColor || "#00f0ff" }}
                             />
-                            <span>{lang.label}</span>
+                            <span className="truncate">{lang.label}</span>
+                            <span className="text-[9px] font-mono opacity-60 bg-neutral-100 border border-neutral-300 px-1 rounded">
+                              .{lang.extension}
+                            </span>
                           </div>
-                          <span className="text-[10px] font-mono opacity-80">
+                          <span className="text-[10px] font-mono font-bold bg-neutral-50 border border-black/40 px-1.5 py-0.5 rounded shadow-[1px_1px_0px_#000] shrink-0 ml-1">
                             {lang.version}
                           </span>
                         </button>
@@ -708,8 +805,20 @@ Online Code Engine & Live Terminal
                       lang.version.toLowerCase().includes(q)
                     );
                   }).length === 0 && (
-                    <div className="p-3 text-center text-xs text-neutral-500 font-mono">
-                      No language found matching &quot;{langSearch}&quot;
+                    <div className="p-4 text-center">
+                      <p className="text-xs font-bold text-neutral-700">No language found</p>
+                      <p className="text-[10px] font-mono text-neutral-400 mt-0.5">
+                        &quot;{langSearch}&quot; doesn&apos;t match any compiler
+                      </p>
+                      <button
+                        onClick={() => {
+                          setLangSearch("");
+                          langSearchInputRef.current?.focus();
+                        }}
+                        className="mt-2 text-[10px] font-black bg-[#ffe600] border border-black px-2 py-1 rounded shadow-[1.5px_1.5px_0px_#000] hover:bg-[#ffd500]"
+                      >
+                        Clear Search
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1172,6 +1281,44 @@ Online Code Engine & Live Terminal
             <span>UTF-8 · Ready</span>
           </div>
         </div>
+      </div>
+
+      {/* 🔔 Right-Side Corner Neobrutalist Toast Notification Stack (Max 2 with Smooth Fade In/Out) */}
+      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2.5 pointer-events-none max-w-sm w-full">
+        {toasts.map((toast) => {
+          const isExiting = exitingToastIds.has(toast.id);
+          return (
+            <div
+              key={toast.id}
+              className={`pointer-events-auto border-[2.5px] border-black rounded-lg p-3 shadow-[4px_4px_0px_#000] flex items-start justify-between gap-2.5 transition-all ${
+                isExiting ? "neo-toast-exit" : "neo-toast-enter"
+              } ${
+                toast.type === "error"
+                  ? "bg-[#ff5277] text-white"
+                  : toast.type === "warning"
+                  ? "bg-[#ffe600] text-black font-bold"
+                  : toast.type === "success"
+                  ? "bg-[#22c55e] text-black font-bold"
+                  : "bg-[#00f0ff] text-black font-bold"
+              }`}
+            >
+              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                <span className="font-black text-xs uppercase tracking-wide truncate">{toast.title}</span>
+                {toast.message && (
+                  <span className="text-[11px] font-mono leading-tight opacity-95 line-clamp-2 break-words">
+                    {toast.message}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => dismissToast(toast.id)}
+                className="text-current opacity-70 hover:opacity-100 p-0.5 shrink-0 transition-opacity"
+              >
+                <X className="w-3.5 h-3.5 stroke-[3]" />
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

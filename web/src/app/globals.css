@@ -136,3 +136,34 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #ff5277;
 }
+
+/* Toast Smooth Slide & Fade Animations */
+@keyframes toastSlideIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(60px, 0, 0) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes toastFadeOut {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(60px, 0, 0) scale(0.96);
+  }
+}
+
+.neo-toast-enter {
+  animation: toastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.neo-toast-exit {
+  animation: toastFadeOut 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

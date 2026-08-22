@@ -1,18 +1,17 @@
-import { spawn, ChildProcess } from "child_process";
+import { spawn, spawnSync, ChildProcess, execSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { executeInLocalSandbox, checkCommandExists } from "@/lib/localSandbox";
 
 interface ExecutionSession {
   id: string;
   process?: ChildProcess;
   cleanupFiles: string[];
+  containerCleanupDir?: string;
   startTime: number;
   onData: (chunk: { type: "stdout" | "stderr" | "status" | "exit"; text: string; code?: number }) => void;
 }
 
-// Global in-memory session store for active interactive runs
 const globalSessions = global as unknown as {
   __devnix_sessions?: Map<string, ExecutionSession>;
 };
@@ -22,6 +21,20 @@ if (!globalSessions.__devnix_sessions) {
 }
 
 export const sessions = globalSessions.__devnix_sessions;
+
+function isDockerContainerRunning(containerName: string = "judge0-workers-1"): boolean {
+  try {
+    const res = spawnSync("docker", ["ps", "--filter", `name=${containerName}`, "--format", "{{.Names}}"], {
+      encoding: "utf-8",
+      timeout: 3000,
+    });
+    return res.stdout ? res.stdout.includes(containerName) : false;
+  } catch {
+    return false;
+  }
+}
+
+const CONTAINER_ENV_PATH = "export PATH=/usr/local/rust-1.40.0/bin:/usr/local/go-1.13.5/bin:/usr/local/php-7.4.1/bin:/usr/local/ruby-2.7.0/bin:/usr/local/openjdk13/bin:/usr/local/node-12.14.0/bin:/usr/local/python-3.8.1/bin:$PATH";
 
 export function createInteractiveSession(
   sessionId: string,
@@ -33,32 +46,22 @@ export function createInteractiveSession(
     killSession(sessionId);
   }
 
-  const tmpDir = os.tmpdir();
-  const uniqueId = `devnix_interactive_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-  let cmd = "";
-  let args: string[] = [];
-  let filePath = "";
+  const uniqueId = `devnix_interactive_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
   const cleanupFiles: string[] = [];
+  let containerCleanupDir = "";
 
-  try {
-    switch (langId) {
-      case 71: // Python
-        filePath = path.join(tmpDir, `${uniqueId}.py`);
-        fs.writeFileSync(filePath, sourceCode, "utf-8");
-        cleanupFiles.push(filePath);
-        cmd = "python";
-        args = ["-u", filePath];
-        break;
+  // 1. DOCKER INTERACTIVE STREAMING
+  if (isDockerContainerRunning("judge0-workers-1")) {
+    try {
+      const containerFile = `/tmp/${uniqueId}`;
+      containerCleanupDir = containerFile;
+      let compileCmd = "";
+      let execArgs: string[] = [];
 
-      case 63: // JavaScript (Node.js)
-        filePath = path.join(tmpDir, `${uniqueId}.js`);
-        fs.writeFileSync(filePath, sourceCode, "utf-8");
-        cleanupFiles.push(filePath);
-        cmd = "node";
-        args = ["--no-warnings", filePath];
-        break;
+      let codeToWrite = sourceCode;
 
-      case 74: // TypeScript
+      // Handle TypeScript transpilation
+      if (langId === 74) {
         try {
           const ts = require("typescript");
           const transpileResult = ts.transpileModule(sourceCode, {
@@ -77,189 +80,210 @@ export function createInteractiveSession(
             onData({ type: "exit", text: "", code: 1 });
             return true;
           }
-
-          filePath = path.join(tmpDir, `${uniqueId}.js`);
-          fs.writeFileSync(filePath, transpileResult.outputText, "utf-8");
-          cleanupFiles.push(filePath);
-          cmd = "node";
-          args = ["--no-warnings", filePath];
+          codeToWrite = transpileResult.outputText;
         } catch (tsErr: any) {
           onData({ type: "stderr", text: `TypeScript Error: ${tsErr.message}\n` });
           onData({ type: "exit", text: "", code: 1 });
           return true;
         }
-        break;
+      }
 
-      case 62: // Java
-        if (checkCommandExists("javac") && checkCommandExists("java")) {
-          const javaDir = path.join(tmpDir, uniqueId);
-          fs.mkdirSync(javaDir, { recursive: true });
-          filePath = path.join(javaDir, `Main.java`);
-          fs.writeFileSync(filePath, sourceCode, "utf-8");
-          cleanupFiles.push(javaDir);
+      switch (langId) {
+        case 50: // C
+        case 48:
+        case 49:
+          compileCmd = `${CONTAINER_ENV_PATH}; gcc -O2 "${containerFile}.c" -o "${containerFile}.exe"`;
+          execArgs = ["exec", "-i", "judge0-workers-1", `${containerFile}.exe`];
+          break;
 
-          const { execSync } = require("child_process");
-          try {
-            execSync(`javac "${filePath}"`, { cwd: javaDir, timeout: 8000, stdio: "pipe" });
-            cmd = "java";
-            args = ["-cp", javaDir, "Main"];
-          } catch (compileErr: any) {
-            onData({ type: "stderr", text: compileErr.stderr ? compileErr.stderr.toString("utf-8") : compileErr.message });
-            onData({ type: "exit", text: "", code: 1 });
-            cleanupSession(sessionId);
-            return true;
-          }
-        } else if (checkCommandExists("java")) {
-          filePath = path.join(tmpDir, `${uniqueId}.java`);
-          fs.writeFileSync(filePath, sourceCode, "utf-8");
-          cleanupFiles.push(filePath);
-          cmd = "java";
-          args = [filePath];
-        } else {
-          // Fallback to local sandbox runner
-          const res = executeInLocalSandbox(langId, sourceCode, "");
-          if (res.stdout) onData({ type: "stdout", text: res.stdout });
-          if (res.stderr) onData({ type: "stderr", text: res.stderr });
-          if (res.compile_output) onData({ type: "stderr", text: res.compile_output });
-          onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
+        case 54: // C++
+        case 52:
+        case 53:
+          compileCmd = `${CONTAINER_ENV_PATH}; g++ -O2 "${containerFile}.cpp" -o "${containerFile}.exe"`;
+          execArgs = ["exec", "-i", "judge0-workers-1", `${containerFile}.exe`];
+          break;
+
+        case 62: // Java
+          compileCmd = `${CONTAINER_ENV_PATH}; javac "${containerFile}/Main.java"`;
+          execArgs = ["exec", "-i", "judge0-workers-1", "sh", "-c", `${CONTAINER_ENV_PATH}; java -cp "${containerFile}" Main`];
+          break;
+
+        case 73: // Rust
+          compileCmd = `${CONTAINER_ENV_PATH}; rustc -O "${containerFile}.rs" -o "${containerFile}.exe"`;
+          execArgs = ["exec", "-i", "judge0-workers-1", `${containerFile}.exe`];
+          break;
+
+        case 60: // Go
+          execArgs = ["exec", "-i", "judge0-workers-1", "sh", "-c", `${CONTAINER_ENV_PATH}; go run "${containerFile}.go"`];
+          break;
+
+        case 71: // Python
+          execArgs = ["exec", "-i", "judge0-workers-1", "sh", "-c", `${CONTAINER_ENV_PATH}; python3 -u "${containerFile}.py"`];
+          break;
+
+        case 63: // JavaScript
+        case 74: // TypeScript
+          execArgs = ["exec", "-i", "judge0-workers-1", "sh", "-c", `${CONTAINER_ENV_PATH}; node "${containerFile}.js"`];
+          break;
+
+        case 72: // Ruby
+          execArgs = ["exec", "-i", "judge0-workers-1", "sh", "-c", `${CONTAINER_ENV_PATH}; ruby "${containerFile}.rb"`];
+          break;
+
+        case 68: // PHP
+          execArgs = ["exec", "-i", "judge0-workers-1", "sh", "-c", `${CONTAINER_ENV_PATH}; php "${containerFile}.php"`];
+          break;
+
+        case 46: // Bash
+          execArgs = ["exec", "-i", "judge0-workers-1", "bash", `${containerFile}.sh`];
+          break;
+
+        default:
+          execArgs = ["exec", "-i", "judge0-workers-1", "sh", "-c", `${CONTAINER_ENV_PATH}; python3 -u "${containerFile}.py"`];
+          break;
+      }
+
+      // Write code into container
+      const extMap: Record<number, string> = {
+        50: "c", 48: "c", 49: "c",
+        54: "cpp", 52: "cpp", 53: "cpp",
+        73: "rs", 60: "go", 71: "py", 63: "js", 74: "js",
+        72: "rb", 68: "php", 46: "sh"
+      };
+
+      if (langId === 62) {
+        spawnSync("docker", ["exec", "-i", "judge0-workers-1", "mkdir", "-p", containerFile], { encoding: "utf-8" });
+        spawnSync("docker", ["exec", "-i", "judge0-workers-1", "sh", "-c", `cat > "${containerFile}/Main.java"`], {
+          input: codeToWrite,
+          encoding: "utf-8",
+          timeout: 4000,
+        });
+      } else {
+        const ext = extMap[langId] || "py";
+        spawnSync("docker", ["exec", "-i", "judge0-workers-1", "sh", "-c", `cat > "${containerFile}.${ext}"`], {
+          input: codeToWrite,
+          encoding: "utf-8",
+          timeout: 4000,
+        });
+      }
+
+      // If compilation step required, run it
+      if (compileCmd) {
+        const compileProc = spawnSync("docker", ["exec", "-i", "judge0-workers-1", "sh", "-c", compileCmd], {
+          encoding: "utf-8",
+          timeout: 8000,
+        });
+
+        if (compileProc.status !== 0) {
+          const errOutput = compileProc.stderr || compileProc.stdout || "Compilation failed";
+          spawnSync("docker", ["exec", "judge0-workers-1", "rm", "-rf", `${containerFile}*`]);
+          onData({ type: "stderr", text: errOutput });
+          onData({ type: "exit", text: "", code: 1 });
           return true;
         }
-        break;
+      }
 
-      case 54: // C++
-      case 50: // C
-        const isCpp = langId === 54;
-        const compiler = isCpp ? "g++" : "gcc";
-        const srcExt = isCpp ? "cpp" : "c";
-        filePath = path.join(tmpDir, `${uniqueId}.${srcExt}`);
-        const exePath = path.join(tmpDir, `${uniqueId}.exe`);
-        fs.writeFileSync(filePath, sourceCode, "utf-8");
-        cleanupFiles.push(filePath, exePath);
+      // Spawn interactive child process
+      const child = spawn("docker", execArgs, {
+        windowsHide: true,
+        env: {
+          ...process.env,
+          PYTHONIOENCODING: "utf-8",
+          PYTHONUNBUFFERED: "1",
+        },
+      });
 
-        if (checkCommandExists(compiler)) {
-          const { execSync } = require("child_process");
-          try {
-            execSync(`${compiler} "${filePath}" -o "${exePath}"`, { timeout: 8000, stdio: "pipe" });
-            cmd = exePath;
-            args = [];
-          } catch (compileErr: any) {
-            onData({ type: "stderr", text: compileErr.stderr ? compileErr.stderr.toString("utf-8") : compileErr.message });
-            onData({ type: "exit", text: "", code: 1 });
-            cleanupSession(sessionId);
-            return true;
-          }
-        } else {
-          const res = executeInLocalSandbox(langId, sourceCode, "");
-          if (res.stdout) onData({ type: "stdout", text: res.stdout });
-          if (res.stderr) onData({ type: "stderr", text: res.stderr });
-          onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
-          return true;
-        }
-        break;
+      const session: ExecutionSession = {
+        id: sessionId,
+        process: child,
+        cleanupFiles,
+        containerCleanupDir,
+        startTime: Date.now(),
+        onData,
+      };
 
-      case 73: // Rust
-        filePath = path.join(tmpDir, `${uniqueId}.rs`);
-        const rustExe = path.join(tmpDir, `${uniqueId}.exe`);
-        fs.writeFileSync(filePath, sourceCode, "utf-8");
-        cleanupFiles.push(filePath, rustExe);
+      sessions.set(sessionId, session);
 
-        if (checkCommandExists("rustc")) {
-          const { execSync } = require("child_process");
-          try {
-            execSync(`rustc "${filePath}" -o "${rustExe}"`, { timeout: 8000, stdio: "pipe" });
-            cmd = rustExe;
-            args = [];
-          } catch (compileErr: any) {
-            onData({ type: "stderr", text: compileErr.stderr ? compileErr.stderr.toString("utf-8") : compileErr.message });
-            onData({ type: "exit", text: "", code: 1 });
-            cleanupSession(sessionId);
-            return true;
-          }
-        } else {
-          const res = executeInLocalSandbox(langId, sourceCode, "");
-          if (res.stdout) onData({ type: "stdout", text: res.stdout });
-          if (res.stderr) onData({ type: "stderr", text: res.stderr });
-          onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
-          return true;
-        }
-        break;
+      child.stdout?.on("data", (data) => {
+        onData({ type: "stdout", text: data.toString("utf-8") });
+      });
 
-      case 60: // Go
-        filePath = path.join(tmpDir, `${uniqueId}.go`);
+      child.stderr?.on("data", (data) => {
+        onData({ type: "stderr", text: data.toString("utf-8") });
+      });
+
+      child.on("error", (err) => {
+        onData({ type: "stderr", text: `\nProcess Error: ${err.message}\n` });
+        cleanupSession(sessionId);
+      });
+
+      child.on("close", (code) => {
+        onData({
+          type: "exit",
+          text: "",
+          code: code ?? 0,
+        });
+        cleanupSession(sessionId);
+      });
+
+      return true;
+    } catch (dockerErr: any) {
+      // Fall through to host fallback
+    }
+  }
+
+  // 2. LOCAL HOST FALLBACK
+  const tmpDir = os.tmpdir();
+  let cmd = "";
+  let args: string[] = [];
+  let filePath = "";
+
+  try {
+    switch (langId) {
+      case 71: // Python
+        filePath = path.join(tmpDir, `${uniqueId}.py`);
         fs.writeFileSync(filePath, sourceCode, "utf-8");
         cleanupFiles.push(filePath);
-
-        if (checkCommandExists("go")) {
-          cmd = "go";
-          args = ["run", filePath];
-        } else {
-          const res = executeInLocalSandbox(langId, sourceCode, "");
-          if (res.stdout) onData({ type: "stdout", text: res.stdout });
-          if (res.stderr) onData({ type: "stderr", text: res.stderr });
-          onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
-          return true;
-        }
+        cmd = "python";
+        args = ["-u", filePath];
         break;
 
-      case 72: // Ruby
-        filePath = path.join(tmpDir, `${uniqueId}.rb`);
+      case 63: // JavaScript
+        filePath = path.join(tmpDir, `${uniqueId}.js`);
         fs.writeFileSync(filePath, sourceCode, "utf-8");
         cleanupFiles.push(filePath);
-
-        if (checkCommandExists("ruby")) {
-          cmd = "ruby";
-          args = [filePath];
-        } else {
-          const res = executeInLocalSandbox(langId, sourceCode, "");
-          if (res.stdout) onData({ type: "stdout", text: res.stdout });
-          if (res.stderr) onData({ type: "stderr", text: res.stderr });
-          onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
-          return true;
-        }
+        cmd = "node";
+        args = ["--no-warnings", filePath];
         break;
 
-      case 68: // PHP
-        filePath = path.join(tmpDir, `${uniqueId}.php`);
-        fs.writeFileSync(filePath, sourceCode, "utf-8");
+      case 74: // TypeScript
+        const ts = require("typescript");
+        const transpileResult = ts.transpileModule(sourceCode, {
+          compilerOptions: { module: ts.ModuleKind.CommonJS },
+        });
+        filePath = path.join(tmpDir, `${uniqueId}.js`);
+        fs.writeFileSync(filePath, transpileResult.outputText, "utf-8");
         cleanupFiles.push(filePath);
-
-        if (checkCommandExists("php")) {
-          cmd = "php";
-          args = [filePath];
-        } else {
-          const res = executeInLocalSandbox(langId, sourceCode, "");
-          if (res.stdout) onData({ type: "stdout", text: res.stdout });
-          if (res.stderr) onData({ type: "stderr", text: res.stderr });
-          onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
-          return true;
-        }
+        cmd = "node";
+        args = ["--no-warnings", filePath];
         break;
 
       case 46: // Bash
         filePath = path.join(tmpDir, `${uniqueId}.sh`);
         fs.writeFileSync(filePath, sourceCode.replace(/\r\n/g, "\n"), "utf-8");
         cleanupFiles.push(filePath);
-
         if (fs.existsSync("C:\\Program Files\\Git\\bin\\bash.exe")) {
           cmd = "C:\\Program Files\\Git\\bin\\bash.exe";
           args = [filePath];
-        } else if (checkCommandExists("bash")) {
+        } else {
           cmd = "bash";
           args = [filePath];
-        } else {
-          const res = executeInLocalSandbox(langId, sourceCode, "");
-          if (res.stdout) onData({ type: "stdout", text: res.stdout });
-          if (res.stderr) onData({ type: "stderr", text: res.stderr });
-          onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
-          return true;
         }
         break;
 
       default:
-        const res = executeInLocalSandbox(langId, sourceCode, "");
-        if (res.stdout) onData({ type: "stdout", text: res.stdout });
-        if (res.stderr) onData({ type: "stderr", text: res.stderr });
-        onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
+        onData({ type: "stderr", text: `Error: Language ID ${langId} requires Docker container to be running.\n` });
+        onData({ type: "exit", text: "", code: 1 });
         return true;
     }
 
@@ -269,7 +293,6 @@ export function createInteractiveSession(
         ...process.env,
         PYTHONIOENCODING: "utf-8",
         PYTHONUNBUFFERED: "1",
-        PYTHONUTF8: "1",
       },
     });
 
@@ -291,17 +314,8 @@ export function createInteractiveSession(
       onData({ type: "stderr", text: data.toString("utf-8") });
     });
 
-    child.on("error", (err) => {
-      onData({ type: "stderr", text: `\nProcess Error: ${err.message}\n` });
-      cleanupSession(sessionId);
-    });
-
     child.on("close", (code) => {
-      onData({
-        type: "exit",
-        text: "",
-        code: code ?? 0,
-      });
+      onData({ type: "exit", text: "", code: code ?? 0 });
       cleanupSession(sessionId);
     });
 
@@ -341,6 +355,9 @@ export function killSession(sessionId: string): boolean {
 function cleanupSession(sessionId: string) {
   const session = sessions.get(sessionId);
   if (session) {
+    if (session.containerCleanupDir) {
+      spawnSync("docker", ["exec", "judge0-workers-1", "rm", "-rf", `${session.containerCleanupDir}*`]);
+    }
     for (const file of session.cleanupFiles) {
       if (fs.existsSync(file)) {
         try {

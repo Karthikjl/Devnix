@@ -1,0 +1,121 @@
+import { DatabaseSync } from "node:sqlite";
+import path from "path";
+import fs from "fs";
+
+const dbPath = path.resolve(process.cwd(), "devnix.db");
+
+// Global cached database connection for development hot-reloading
+const globalDb = global as unknown as {
+  __devnix_db?: DatabaseSync;
+};
+
+function initDb(): DatabaseSync {
+  const db = new DatabaseSync(dbPath);
+
+  // Enable WAL mode for high concurrency
+  db.exec("PRAGMA journal_mode = WAL;");
+  db.exec("PRAGMA foreign_keys = ON;");
+
+  // 1. Users Table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      username TEXT UNIQUE NOT NULL,
+      displayName TEXT NOT NULL,
+      passwordHash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'USER',
+      isSuperAdmin INTEGER NOT NULL DEFAULT 0,
+      isActive INTEGER NOT NULL DEFAULT 1,
+      mustResetPassword INTEGER NOT NULL DEFAULT 0,
+      failedAttempts INTEGER NOT NULL DEFAULT 0,
+      lockedUntil INTEGER DEFAULT NULL,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    );
+  `);
+
+  // Migration: Add isSuperAdmin column if table existed previously without it
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+    const hasSuperAdmin = tableInfo.some((col) => col.name === "isSuperAdmin");
+    if (!hasSuperAdmin) {
+      db.exec("ALTER TABLE users ADD COLUMN isSuperAdmin INTEGER NOT NULL DEFAULT 0;");
+      // If there are existing admins, promote the earliest user to Super Admin
+      const earliestUser = db.prepare("SELECT id FROM users ORDER BY createdAt ASC LIMIT 1").get() as { id: string } | undefined;
+      if (earliestUser) {
+        db.prepare("UPDATE users SET isSuperAdmin = 1, role = 'ADMIN' WHERE id = ?").run(earliestUser.id);
+      }
+    }
+  } catch {}
+
+  // 2. Settings Table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+  `);
+
+  // 3. Sessions & Refresh Tokens Tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS refresh_tokens (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      tokenHash TEXT NOT NULL,
+      expiresAt INTEGER NOT NULL,
+      createdAt INTEGER NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      impersonatedBy TEXT DEFAULT NULL,
+      expiresAt INTEGER NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Seed default settings if not exists
+  const seedDefaults: Record<string, string> = {
+    selfSignupEnabled: "true",
+    rateLimitEnabled: "true",
+    rateLimitWindow: "15",
+    rateLimitMaxAttempts: "20",
+  };
+
+  const checkSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
+  const insertSettingStmt = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)");
+
+  for (const [key, val] of Object.entries(seedDefaults)) {
+    const existing = checkSettingStmt.get(key);
+    if (!existing) {
+      insertSettingStmt.run(key, val);
+    }
+  }
+
+  return db;
+}
+
+export function getDb(): DatabaseSync {
+  if (!globalDb.__devnix_db) {
+    globalDb.__devnix_db = initDb();
+  } else {
+    try {
+      globalDb.__devnix_db.exec(`
+        CREATE TABLE IF NOT EXISTS refresh_tokens (
+          id TEXT PRIMARY KEY,
+          userId TEXT NOT NULL,
+          tokenHash TEXT NOT NULL,
+          expiresAt INTEGER NOT NULL,
+          createdAt INTEGER NOT NULL,
+          FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+        );
+      `);
+    } catch {}
+  }
+  return globalDb.__devnix_db;
+}

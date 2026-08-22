@@ -27,8 +27,19 @@ import {
   Code2,
   Sparkles,
   Search,
-  X
+  X,
+  User,
+  ShieldCheck,
+  LogOut,
+  Settings,
+  ArrowRight,
 } from "lucide-react";
+import { AuthModal } from "@/components/AuthModal";
+import { AuthGateway } from "@/components/AuthGateway";
+import { MustResetPasswordModal } from "@/components/MustResetPasswordModal";
+import { ProfileView } from "@/components/ProfileView";
+import { AdminView } from "@/components/AdminView";
+import { SafeUser } from "@/lib/auth";
 
 // Dynamically import Monaco Editor
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
@@ -126,6 +137,58 @@ export default function DevnixStudio() {
   const [isProcessRunning, setIsProcessRunning] = useState<boolean>(false);
   const [result, setResult] = useState<ExecutionResult | null>(null);
   
+  // User Authentication & Top Views
+  const [currentUser, setCurrentUser] = useState<SafeUser | null>(null);
+  const [activeView, setActiveView] = useState<"editor" | "profile" | "admin">("editor");
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState<boolean>(false);
+  const [selfSignupEnabled, setSelfSignupEnabled] = useState<boolean>(true);
+  const [isSetupNeeded, setIsSetupNeeded] = useState<boolean>(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const res = await fetch("/api/auth/me");
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentUser(data.user || null);
+        setIsSetupNeeded(Boolean(data.isSetupNeeded));
+        if (data.selfSignupEnabled !== undefined) {
+          setSelfSignupEnabled(data.selfSignupEnabled);
+        }
+      }
+    } catch {} finally {
+      setIsCheckingAuth(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCurrentUser();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      setCurrentUser(null);
+      setActiveView("editor");
+      setIsUserMenuOpen(false);
+      showToast("info", "Signed Out", "You have been signed out.");
+    } catch {}
+  };
+
+  const handleStopImpersonation = async () => {
+    try {
+      const res = await fetch("/api/admin/impersonate", { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok) {
+        setCurrentUser(data.adminUser || null);
+        showToast("success", "Returned to Admin", data.message || "Admin session restored.");
+        fetchCurrentUser();
+      }
+    } catch {}
+  };
+
   // Custom dropdown open states
   const [isLangOpen, setIsLangOpen] = useState<boolean>(false);
   const [isThemeOpen, setIsThemeOpen] = useState<boolean>(false);
@@ -155,6 +218,9 @@ export default function DevnixStudio() {
       }
       if (themeDropdownRef.current && !themeDropdownRef.current.contains(event.target as Node)) {
         setIsThemeOpen(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -624,12 +690,100 @@ export default function DevnixStudio() {
     }
   };
 
+  // 1. Initial Checking Authentication Screen
+  if (isCheckingAuth) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-[#f6f3eb]">
+        <div className="p-6 neo-box-lg bg-white flex items-center gap-3 border-[3px] border-black shadow-[6px_6px_0px_#000]">
+          <span className="w-4 h-4 rounded-full bg-[#ffe600] animate-ping" />
+          <span className="font-black text-sm uppercase tracking-wide">Authenticating Devnix...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Mandatory Auth Gateway if not authenticated (Blocks all access to code editor & terminal)
+  if (!currentUser) {
+    return (
+      <>
+        <AuthGateway
+          isSetupNeeded={isSetupNeeded}
+          selfSignupEnabled={selfSignupEnabled}
+          onSuccess={(user) => {
+            setCurrentUser(user);
+            setIsSetupNeeded(false);
+          }}
+          showToast={showToast}
+        />
+
+        {/* 🔔 Right-Side Corner Neobrutalist Toast Notification Stack */}
+        <div className="fixed top-4 right-4 z-50 flex flex-col gap-2.5 pointer-events-none max-w-sm w-full">
+          {toasts.map((toast) => {
+            const isExiting = exitingToastIds.has(toast.id);
+            return (
+              <div
+                key={toast.id}
+                className={`pointer-events-auto border-[2.5px] border-black rounded-lg p-3 shadow-[4px_4px_0px_#000] flex items-start justify-between gap-2.5 transition-all ${
+                  isExiting ? "neo-toast-exit" : "neo-toast-enter"
+                } ${
+                  toast.type === "error"
+                    ? "bg-[#ff5277] text-white"
+                    : toast.type === "warning"
+                    ? "bg-[#ffe600] text-black font-bold"
+                    : toast.type === "success"
+                    ? "bg-[#22c55e] text-black font-bold"
+                    : "bg-[#00f0ff] text-black font-bold"
+                }`}
+              >
+                <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                  <span className="font-black text-xs uppercase tracking-wide truncate">{toast.title}</span>
+                  {toast.message && (
+                    <span className="text-[11px] font-mono leading-tight opacity-95 line-clamp-2 break-words">
+                      {toast.message}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => dismissToast(toast.id)}
+                  className="text-current opacity-70 hover:opacity-100 p-0.5 shrink-0 transition-opacity"
+                >
+                  <X className="w-3.5 h-3.5 stroke-[3]" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+  }
+
   return (
     <div className="h-screen max-h-screen flex flex-col p-2.5 md:p-3 max-w-[1720px] mx-auto gap-2.5 overflow-hidden">
+      {/* Impersonation Banner */}
+      {currentUser?.impersonatedBy && (
+        <div className="shrink-0 bg-[#ff5277] text-white border-2 border-black rounded-xl p-2 px-4 shadow-[3px_3px_0px_#000] flex items-center justify-between z-40 animate-in fade-in">
+          <div className="flex items-center gap-2 text-xs font-black">
+            <ShieldCheck className="w-4 h-4" />
+            <span>
+              IMPERSONATING: <u>{currentUser.displayName}</u> (@{currentUser.username})
+            </span>
+          </div>
+          <button
+            onClick={handleStopImpersonation}
+            className="bg-white text-black border-2 border-black font-black text-xs px-3 py-1 rounded-lg shadow-[2px_2px_0px_#000] hover:bg-neutral-100 cursor-pointer"
+          >
+            Stop Impersonating
+          </button>
+        </div>
+      )}
+
       {/* ⚡ HEADER BAR */}
       <header className="shrink-0 neo-box-lg bg-white p-2.5 px-3 md:px-4 flex flex-wrap items-center justify-between gap-3 relative z-30">
         {/* Brand Logo & Product Name */}
-        <div className="flex items-center gap-2.5">
+        <div
+          onClick={() => setActiveView("editor")}
+          className="flex items-center gap-2.5 cursor-pointer select-none"
+        >
           <img
             src="/logo.png"
             alt="Devnix Logo"
@@ -645,7 +799,7 @@ export default function DevnixStudio() {
               </span>
             </div>
             <p className="text-[10px] font-bold text-neutral-500 hidden sm:block leading-tight mt-0.5">
-Online Code Engine
+              Online Code Engine & Live Terminal
             </p>
           </div>
         </div>
@@ -891,8 +1045,108 @@ Online Code Engine
           </button>
         </div>
 
-        {/* Right: Primary Run / Stop Action */}
+        {/* Right: User Auth & Run Actions */}
         <div className="flex items-center gap-2">
+          {/* User Account Controls */}
+          {currentUser ? (
+            <div className="relative" ref={userMenuRef}>
+              <button
+                type="button"
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                className="neo-btn py-1.5 px-3 text-xs font-black flex items-center gap-2 border-2 border-black shadow-[2.5px_2.5px_0px_#000] bg-[#ffe600] text-black hover:bg-[#ffd500]"
+              >
+                <div className="w-5 h-5 rounded-full bg-black text-white flex items-center justify-center text-[10px] font-black border border-black">
+                  {currentUser.displayName.charAt(0).toUpperCase()}
+                </div>
+                <span className="max-w-[100px] truncate text-black font-black">{currentUser.displayName}</span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 stroke-[3] text-black transition-transform ${
+                    isUserMenuOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              {/* User Dropdown Menu */}
+              {isUserMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-52 bg-white border-[2.5px] border-black rounded-xl shadow-[4px_4px_0px_#000] z-50 p-1.5 flex flex-col gap-1 animate-in fade-in slide-in-from-top-2">
+                  <div className="p-2 bg-[#f6f3eb] rounded-lg border border-black/20 text-left">
+                    <p className="font-black text-xs text-black truncate">{currentUser.displayName}</p>
+                    <p className="font-mono text-[10px] text-neutral-500 truncate">@{currentUser.username}</p>
+                    <span className="inline-block mt-1 text-[9px] font-mono font-black uppercase px-1.5 py-0.2 rounded border border-black bg-[#ffe600] text-black">
+                      {currentUser.isSuperAdmin ? "👑 SUPER ADMIN" : currentUser.role}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setActiveView("editor");
+                      setIsUserMenuOpen(false);
+                    }}
+                    className={`w-full text-left p-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                      activeView === "editor"
+                        ? "bg-[#00f0ff] text-black border border-black shadow-[1.5px_1.5px_0px_#000]"
+                        : "hover:bg-neutral-100 text-neutral-800"
+                    }`}
+                  >
+                    <Code2 className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>Code Studio</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setActiveView("profile");
+                      setIsUserMenuOpen(false);
+                    }}
+                    className={`w-full text-left p-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                      activeView === "profile"
+                        ? "bg-[#ffe600] text-black border border-black shadow-[1.5px_1.5px_0px_#000]"
+                        : "hover:bg-neutral-100 text-neutral-800"
+                    }`}
+                  >
+                    <User className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>Profile Settings</span>
+                  </button>
+
+                  {currentUser.role === "ADMIN" && (
+                    <button
+                      onClick={() => {
+                        setActiveView("admin");
+                        setIsUserMenuOpen(false);
+                      }}
+                      className={`w-full text-left p-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                        activeView === "admin"
+                          ? "bg-[#ffe600] text-black border border-black shadow-[1.5px_1.5px_0px_#000]"
+                          : "hover:bg-neutral-100 text-neutral-800"
+                      }`}
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 stroke-[2.5] text-black" />
+                      <span>Admin Panel</span>
+                    </button>
+                  )}
+
+                  <div className="h-[1px] bg-neutral-200 my-0.5" />
+
+                  <button
+                    onClick={handleLogout}
+                    className="w-full text-left p-2 rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 transition-all flex items-center gap-2"
+                  >
+                    <LogOut className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsAuthModalOpen(true)}
+              className="neo-btn bg-[#22c55e] text-black hover:bg-[#16a34a] px-3.5 py-2 text-xs font-black flex items-center gap-1.5 shadow-[2.5px_2.5px_0px_#000]"
+            >
+              <User className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Sign In</span>
+            </button>
+          )}
+
+          {/* Primary Run / Stop Action */}
           {isProcessRunning ? (
             <button
               onClick={handleStopProcess}
@@ -921,8 +1175,27 @@ Online Code Engine
         </div>
       </header>
 
-      {/* 🚀 MAIN SPLIT WORKSPACE: 100vh Fit */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-0 overflow-hidden">
+      {/* 🚀 DYNAMIC MAIN WORKSPACE / VIEWS */}
+      {activeView === "profile" && currentUser ? (
+        <ProfileView
+          user={currentUser}
+          onUpdateUser={setCurrentUser}
+          onBack={() => setActiveView("editor")}
+          showToast={showToast}
+        />
+      ) : activeView === "admin" && currentUser?.role === "ADMIN" ? (
+        <AdminView
+          currentUser={currentUser}
+          onBack={() => setActiveView("editor")}
+          onImpersonateSuccess={(targetUser) => {
+            setCurrentUser(targetUser);
+            setActiveView("editor");
+          }}
+          showToast={showToast}
+        />
+      ) : (
+        /* 🚀 MAIN SPLIT WORKSPACE: 100vh Fit */
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-0 overflow-hidden">
         {/* ========================================================================= */}
         {/* LEFT COLUMN: MONACO / VS CODE EDITOR (7 Columns)                          */}
         {/* ========================================================================= */}
@@ -1282,6 +1555,30 @@ Online Code Engine
           </div>
         </div>
       </div>
+      )}
+
+      {/* 👤 Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={(user) => {
+          setCurrentUser(user);
+          showToast("success", "Welcome!", `Signed in as @${user.username}`);
+        }}
+        selfSignupEnabled={selfSignupEnabled}
+      />
+
+      {/* 🔒 Mandatory Must Reset Password Modal */}
+      {currentUser && (
+        <MustResetPasswordModal
+          isOpen={Boolean(currentUser.mustResetPassword)}
+          user={currentUser}
+          onSuccess={(updatedUser) => {
+            setCurrentUser(updatedUser);
+          }}
+          showToast={showToast}
+        />
+      )}
 
       {/* 🔔 Right-Side Corner Neobrutalist Toast Notification Stack (Max 2 with Smooth Fade In/Out) */}
       <div className="fixed top-4 right-4 z-50 flex flex-col gap-2.5 pointer-events-none max-w-sm w-full">

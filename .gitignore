@@ -53,6 +53,15 @@ devnix_*
 *.o
 *.obj
 
+# Databases & SQLite
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+devnix.db*
+web/devnix.db*
+
 # Operating System & IDE Files
 .DS_Store
 Thumbs.db

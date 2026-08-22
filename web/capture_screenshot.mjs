@@ -29,15 +29,13 @@ async function captureRealScreenshot() {
     fs.mkdirSync(docsDir, { recursive: true });
   }
 
-  const docsPath = path.join(docsDir, "devnix_preview.png");
-  const publicPath = path.resolve("./public/devnix_preview.png");
+  const docsPath = path.join(docsDir, "preview.png");
 
   console.log(`💾 Saving screenshot to ${docsPath}...`);
   await page.screenshot({ path: docsPath });
-  await page.screenshot({ path: publicPath });
 
   await browser.close();
-  console.log("✅ Real screenshot successfully captured and saved!");
+  console.log("✅ Screenshot successfully saved to docs/preview.png!");
 }
 
 captureRealScreenshot().catch((err) => {

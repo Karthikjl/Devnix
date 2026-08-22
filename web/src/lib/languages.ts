@@ -18,15 +18,12 @@ export const SUPPORTED_LANGUAGES: Language[] = [
     extension: "py",
     monacoLang: "python",
     badgeColor: "#ffe600",
-    defaultCode: `# Python 3 Interactive Playground on Devnix
-print("⚡ Welcome to Devnix Studio! ⚡")
+    defaultCode: `# Python 3 on Devnix
+name = input("Enter your name: ")
+print(f"Hello, {name}!")
 
-name = input("👉 Enter your name: ")
-print(f"Hello, {name}! Welcome aboard.")
-
-num = int(input("👉 Enter a number to calculate its square: "))
-print(f"Result: {num}² = {num * num}")
-print("✓ Live execution finished successfully!")
+num = int(input("Enter a number to square: "))
+print(f"{num} squared is {num * num}")
 `,
   },
   {

@@ -119,7 +119,7 @@ export function createInteractiveSession(
     child.on("close", (code) => {
       onData({
         type: "exit",
-        text: `\n[Process terminated with exit code ${code}]\n`,
+        text: "",
         code: code ?? 0,
       });
       cleanupSession(sessionId);

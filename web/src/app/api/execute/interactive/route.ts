@@ -16,13 +16,6 @@ export async function POST(req: NextRequest) {
 
     const stream = new ReadableStream({
       start(controller) {
-        // Send initial connected event
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ type: "status", text: "⚡ Process connected. Streaming live...\n" })}\n\n`
-          )
-        );
-
         const success = createInteractiveSession(
           sessionId,
           language_id,

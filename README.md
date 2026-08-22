@@ -39,17 +39,17 @@
   - `🎨 Monokai Pro`
   - `❄️ Nord Arctic`
 - **🌐 11+ Supported Languages**:
-  - Python 3.8+
-  - JavaScript (Node.js)
-  - TypeScript
-  - C++ (GCC)
-  - C (GCC)
-  - Java (OpenJDK)
-  - Rust
-  - Go
-  - Ruby
-  - PHP
-  - Bash
+  - Python (3.12+)
+  - JavaScript (Node.js 20+)
+  - TypeScript (5.x)
+  - C++ (GCC 13+)
+  - C (GCC 13+)
+  - Java (OpenJDK 21+)
+  - Rust (1.78+)
+  - Go (1.22+)
+  - Ruby (3.2+)
+  - PHP (8.2+)
+  - Bash (5.2+)
 - **⚡ Dual Execution Architecture**:
   - **Production Mode**: Communicates with sandboxed **Judge0 CE** containers running on Docker.
   - **Local Development Mode**: Built-in intelligent hybrid fallback runner for instant cross-platform testing (Windows, macOS, Linux) with full UTF-8 emoji support.

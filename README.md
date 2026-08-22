@@ -111,36 +111,45 @@ cd Devnix
 
 ---
 
-### Step 2: (Optional) Start the Judge0 Docker Cluster
+### 🐳 Quick Start (One Command with Docker Compose)
 
-To start the local Judge0 Community Edition instance (Server, Worker, Redis, and PostgreSQL):
+To start the **entire project** (Next.js Web Studio + Judge0 Server + Workers + PostgreSQL + Redis):
 
 ```bash
-cd judge0
 docker compose up -d
-cd ..
 ```
 
-*Judge0 REST API will be active at `http://localhost:2358`.*
+- **Devnix Web Studio**: `http://localhost:3000`
+- **Judge0 Execution API**: `http://localhost:2358`
+
+To view logs:
+```bash
+docker compose logs -f
+```
+
+To stop all services:
+```bash
+docker compose down
+```
 
 ---
 
-### Step 3: Install & Start the Web Application
+### 💻 Local Development Setup (Without Docker)
 
-Navigate to the `web` directory and install dependencies:
+If you are developing the frontend locally using Node.js:
 
-```bash
-cd web
-npm install
-```
+1. Navigate to the `web` directory and install dependencies:
+   ```bash
+   cd web
+   npm install
+   ```
 
-Start the Next.js development server:
+2. Start the development server:
+   ```bash
+   npm run dev
+   ```
 
-```bash
-npm run dev
-```
-
-Open **[http://localhost:3000](http://localhost:3000)** in your web browser.
+3. Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ---
 

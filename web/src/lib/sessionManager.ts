@@ -112,10 +112,13 @@ export function createInteractiveSession(
           execArgs = ["exec", "-i", workerContainer, `${containerFile}.exe`];
           break;
 
-        case 62: // Java
-          compileCmd = `${CONTAINER_ENV_PATH}; javac "${containerFile}/Main.java"`;
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; java -cp "${containerFile}" Main`];
+        case 62: { // Java
+          const classMatch = codeToWrite.match(/public\s+class\s+([A-Za-z0-9_]+)/) || codeToWrite.match(/class\s+([A-Za-z0-9_]+)/);
+          const javaClassName = classMatch ? classMatch[1] : "Main";
+          compileCmd = `${CONTAINER_ENV_PATH}; javac "${containerFile}/${javaClassName}.java"`;
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; java -cp "${containerFile}" ${javaClassName}`];
           break;
+        }
 
         case 73: // Rust
           compileCmd = `${CONTAINER_ENV_PATH}; rustc -O "${containerFile}.rs" -o "${containerFile}.exe"`;
@@ -161,8 +164,10 @@ export function createInteractiveSession(
       };
 
       if (langId === 62) {
+        const classMatch = codeToWrite.match(/public\s+class\s+([A-Za-z0-9_]+)/) || codeToWrite.match(/class\s+([A-Za-z0-9_]+)/);
+        const javaClassName = classMatch ? classMatch[1] : "Main";
         spawnSync("docker", ["exec", "-i", workerContainer, "mkdir", "-p", containerFile], { encoding: "utf-8" });
-        spawnSync("docker", ["exec", "-i", workerContainer, "sh", "-c", `cat > "${containerFile}/Main.java"`], {
+        spawnSync("docker", ["exec", "-i", workerContainer, "sh", "-c", `cat > "${containerFile}/${javaClassName}.java"`], {
           input: codeToWrite,
           encoding: "utf-8",
           timeout: 4000,

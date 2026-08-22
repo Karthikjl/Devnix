@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import path from "path";
 import fs from "fs";
 
-const dbPath = path.resolve(process.cwd(), "devnix.db");
+const dbPath = process.env.DEVNIX_DB_PATH || path.resolve(process.cwd(), "devnix.db");
 
 // Global cached database connection for development hot-reloading
 const globalDb = global as unknown as {
@@ -10,6 +10,11 @@ const globalDb = global as unknown as {
 };
 
 function initDb(): DatabaseSync {
+  const parentDir = path.dirname(dbPath);
+  if (!fs.existsSync(parentDir)) {
+    fs.mkdirSync(parentDir, { recursive: true });
+  }
+
   const db = new DatabaseSync(dbPath);
 
   // Enable WAL mode for high concurrency

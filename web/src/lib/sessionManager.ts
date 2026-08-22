@@ -22,19 +22,27 @@ if (!globalSessions.__devnix_sessions) {
 
 export const sessions = globalSessions.__devnix_sessions;
 
-function isDockerContainerRunning(containerName: string = "judge0-workers-1"): boolean {
+function getRunningWorkerContainer(): string | null {
   try {
-    const res = spawnSync("docker", ["ps", "--filter", `name=${containerName}`, "--format", "{{.Names}}"], {
+    const res = spawnSync("docker", ["ps", "--format", "{{.Names}}"], {
       encoding: "utf-8",
       timeout: 3000,
     });
-    return res.stdout ? res.stdout.includes(containerName) : false;
+    if (res.stdout) {
+      const names = res.stdout.trim().split(/\r?\n/).map((n) => n.trim()).filter(Boolean);
+      for (const name of names) {
+        if (name.includes("worker") || name.includes("server")) {
+          return name;
+        }
+      }
+    }
+    return null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-const CONTAINER_ENV_PATH = "export PATH=/usr/local/rust-1.40.0/bin:/usr/local/go-1.13.5/bin:/usr/local/php-7.4.1/bin:/usr/local/ruby-2.7.0/bin:/usr/local/openjdk13/bin:/usr/local/node-12.14.0/bin:/usr/local/python-3.8.1/bin:$PATH";
+const CONTAINER_ENV_PATH = "export PATH=/usr/local/rust-1.40.0/bin:/usr/local/go-1.13.5/bin:/usr/local/php-7.4.1/bin:/usr/local/ruby-2.7.0/bin:/usr/local/openjdk13/bin:/usr/local/node-12.14.0/bin:/usr/local/python-3.8.1/bin:/usr/local/bin:/usr/bin:/bin:$PATH";
 
 export function createInteractiveSession(
   sessionId: string,
@@ -51,7 +59,8 @@ export function createInteractiveSession(
   let containerCleanupDir = "";
 
   // 1. DOCKER INTERACTIVE STREAMING
-  if (isDockerContainerRunning("judge0-workers-1")) {
+  const workerContainer = getRunningWorkerContainer();
+  if (workerContainer) {
     try {
       const containerFile = `/tmp/${uniqueId}`;
       containerCleanupDir = containerFile;
@@ -93,53 +102,53 @@ export function createInteractiveSession(
         case 48:
         case 49:
           compileCmd = `${CONTAINER_ENV_PATH}; gcc -O2 "${containerFile}.c" -o "${containerFile}.exe"`;
-          execArgs = ["exec", "-i", "judge0-workers-1", `${containerFile}.exe`];
+          execArgs = ["exec", "-i", workerContainer, `${containerFile}.exe`];
           break;
 
         case 54: // C++
         case 52:
         case 53:
           compileCmd = `${CONTAINER_ENV_PATH}; g++ -O2 "${containerFile}.cpp" -o "${containerFile}.exe"`;
-          execArgs = ["exec", "-i", "judge0-workers-1", `${containerFile}.exe`];
+          execArgs = ["exec", "-i", workerContainer, `${containerFile}.exe`];
           break;
 
         case 62: // Java
           compileCmd = `${CONTAINER_ENV_PATH}; javac "${containerFile}/Main.java"`;
-          execArgs = ["exec", "-i", "judge0-workers-1", "sh", "-c", `${CONTAINER_ENV_PATH}; java -cp "${containerFile}" Main`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; java -cp "${containerFile}" Main`];
           break;
 
         case 73: // Rust
           compileCmd = `${CONTAINER_ENV_PATH}; rustc -O "${containerFile}.rs" -o "${containerFile}.exe"`;
-          execArgs = ["exec", "-i", "judge0-workers-1", `${containerFile}.exe`];
+          execArgs = ["exec", "-i", workerContainer, `${containerFile}.exe`];
           break;
 
         case 60: // Go
-          execArgs = ["exec", "-i", "judge0-workers-1", "sh", "-c", `${CONTAINER_ENV_PATH}; go run "${containerFile}.go"`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; go run "${containerFile}.go"`];
           break;
 
         case 71: // Python
-          execArgs = ["exec", "-i", "judge0-workers-1", "sh", "-c", `${CONTAINER_ENV_PATH}; python3 -u "${containerFile}.py"`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; python3 -u "${containerFile}.py"`];
           break;
 
         case 63: // JavaScript
         case 74: // TypeScript
-          execArgs = ["exec", "-i", "judge0-workers-1", "sh", "-c", `${CONTAINER_ENV_PATH}; node "${containerFile}.js"`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; node "${containerFile}.js"`];
           break;
 
         case 72: // Ruby
-          execArgs = ["exec", "-i", "judge0-workers-1", "sh", "-c", `${CONTAINER_ENV_PATH}; ruby "${containerFile}.rb"`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ruby "${containerFile}.rb"`];
           break;
 
         case 68: // PHP
-          execArgs = ["exec", "-i", "judge0-workers-1", "sh", "-c", `${CONTAINER_ENV_PATH}; php "${containerFile}.php"`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; php "${containerFile}.php"`];
           break;
 
         case 46: // Bash
-          execArgs = ["exec", "-i", "judge0-workers-1", "bash", `${containerFile}.sh`];
+          execArgs = ["exec", "-i", workerContainer, "bash", `${containerFile}.sh`];
           break;
 
         default:
-          execArgs = ["exec", "-i", "judge0-workers-1", "sh", "-c", `${CONTAINER_ENV_PATH}; python3 -u "${containerFile}.py"`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; python3 -u "${containerFile}.py"`];
           break;
       }
 
@@ -152,15 +161,15 @@ export function createInteractiveSession(
       };
 
       if (langId === 62) {
-        spawnSync("docker", ["exec", "-i", "judge0-workers-1", "mkdir", "-p", containerFile], { encoding: "utf-8" });
-        spawnSync("docker", ["exec", "-i", "judge0-workers-1", "sh", "-c", `cat > "${containerFile}/Main.java"`], {
+        spawnSync("docker", ["exec", "-i", workerContainer, "mkdir", "-p", containerFile], { encoding: "utf-8" });
+        spawnSync("docker", ["exec", "-i", workerContainer, "sh", "-c", `cat > "${containerFile}/Main.java"`], {
           input: codeToWrite,
           encoding: "utf-8",
           timeout: 4000,
         });
       } else {
         const ext = extMap[langId] || "py";
-        spawnSync("docker", ["exec", "-i", "judge0-workers-1", "sh", "-c", `cat > "${containerFile}.${ext}"`], {
+        spawnSync("docker", ["exec", "-i", workerContainer, "sh", "-c", `cat > "${containerFile}.${ext}"`], {
           input: codeToWrite,
           encoding: "utf-8",
           timeout: 4000,
@@ -169,14 +178,14 @@ export function createInteractiveSession(
 
       // If compilation step required, run it
       if (compileCmd) {
-        const compileProc = spawnSync("docker", ["exec", "-i", "judge0-workers-1", "sh", "-c", compileCmd], {
+        const compileProc = spawnSync("docker", ["exec", "-i", workerContainer, "sh", "-c", compileCmd], {
           encoding: "utf-8",
           timeout: 8000,
         });
 
         if (compileProc.status !== 0) {
           const errOutput = compileProc.stderr || compileProc.stdout || "Compilation failed";
-          spawnSync("docker", ["exec", "judge0-workers-1", "rm", "-rf", `${containerFile}*`]);
+          spawnSync("docker", ["exec", workerContainer, "rm", "-rf", `${containerFile}*`]);
           onData({ type: "stderr", text: errOutput });
           onData({ type: "exit", text: "", code: 1 });
           return true;
@@ -228,102 +237,22 @@ export function createInteractiveSession(
 
       return true;
     } catch (dockerErr: any) {
-      // Fall through to host fallback
+      onData({
+        type: "stderr",
+        text: `Runtime Container Error: ${dockerErr.message}\n`,
+      });
+      onData({ type: "exit", text: "", code: 1 });
+      return false;
     }
   }
 
-  // 2. LOCAL HOST FALLBACK
-  const tmpDir = os.tmpdir();
-  let cmd = "";
-  let args: string[] = [];
-  let filePath = "";
-
-  try {
-    switch (langId) {
-      case 71: // Python
-        filePath = path.join(tmpDir, `${uniqueId}.py`);
-        fs.writeFileSync(filePath, sourceCode, "utf-8");
-        cleanupFiles.push(filePath);
-        cmd = "python";
-        args = ["-u", filePath];
-        break;
-
-      case 63: // JavaScript
-        filePath = path.join(tmpDir, `${uniqueId}.js`);
-        fs.writeFileSync(filePath, sourceCode, "utf-8");
-        cleanupFiles.push(filePath);
-        cmd = "node";
-        args = ["--no-warnings", filePath];
-        break;
-
-      case 74: // TypeScript
-        const ts = require("typescript");
-        const transpileResult = ts.transpileModule(sourceCode, {
-          compilerOptions: { module: ts.ModuleKind.CommonJS },
-        });
-        filePath = path.join(tmpDir, `${uniqueId}.js`);
-        fs.writeFileSync(filePath, transpileResult.outputText, "utf-8");
-        cleanupFiles.push(filePath);
-        cmd = "node";
-        args = ["--no-warnings", filePath];
-        break;
-
-      case 46: // Bash
-        filePath = path.join(tmpDir, `${uniqueId}.sh`);
-        fs.writeFileSync(filePath, sourceCode.replace(/\r\n/g, "\n"), "utf-8");
-        cleanupFiles.push(filePath);
-        if (fs.existsSync("C:\\Program Files\\Git\\bin\\bash.exe")) {
-          cmd = "C:\\Program Files\\Git\\bin\\bash.exe";
-          args = [filePath];
-        } else {
-          cmd = "bash";
-          args = [filePath];
-        }
-        break;
-
-      default:
-        onData({ type: "stderr", text: `Error: Language ID ${langId} requires Docker container to be running.\n` });
-        onData({ type: "exit", text: "", code: 1 });
-        return true;
-    }
-
-    const child = spawn(cmd, args, {
-      windowsHide: true,
-      env: {
-        ...process.env,
-        PYTHONIOENCODING: "utf-8",
-        PYTHONUNBUFFERED: "1",
-      },
-    });
-
-    const session: ExecutionSession = {
-      id: sessionId,
-      process: child,
-      cleanupFiles,
-      startTime: Date.now(),
-      onData,
-    };
-
-    sessions.set(sessionId, session);
-
-    child.stdout?.on("data", (data) => {
-      onData({ type: "stdout", text: data.toString("utf-8") });
-    });
-
-    child.stderr?.on("data", (data) => {
-      onData({ type: "stderr", text: data.toString("utf-8") });
-    });
-
-    child.on("close", (code) => {
-      onData({ type: "exit", text: "", code: code ?? 0 });
-      cleanupSession(sessionId);
-    });
-
-    return true;
-  } catch (err: any) {
-    onData({ type: "stderr", text: `Failed to start process: ${err.message}` });
-    return false;
-  }
+  // If no container is available, do not fallback to host execution
+  onData({
+    type: "stderr",
+    text: "Error: Judge0 Compiler container is offline or unreachable. Please ensure Docker containers are running.\n",
+  });
+  onData({ type: "exit", text: "", code: 1 });
+  return false;
 }
 
 export function sendInputToSession(sessionId: string, input: string): boolean {

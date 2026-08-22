@@ -2,10 +2,10 @@
 # DEVNIX Web Application - Production Multi-Stage Dockerfile
 # ==============================================================================
 
-# 1. Base image
-FROM node:20-alpine AS base
+# 1. Base image (Node 22+ required for native node:sqlite support)
+FROM node:22-alpine AS base
 WORKDIR /app
-RUN apk add --no-cache libc6-compat python3
+RUN apk add --no-cache libc6-compat python3 su-exec docker-cli
 
 # 2. Dependencies
 FROM base AS deps
@@ -33,14 +33,17 @@ ENV HOSTNAME="0.0.0.0"
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/src ./src
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/src ./src
 
-USER nextjs
+# Copy entrypoint script and make it executable
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 3000
 
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["npm", "start"]

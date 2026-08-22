@@ -44,17 +44,26 @@ interface AdminViewProps {
   onBack: () => void;
   onImpersonateSuccess: (targetUser: SafeUser) => void;
   showToast: (type: "error" | "warning" | "success" | "info", title: string, message?: string) => void;
+  initialSelfSignupEnabled?: boolean;
 }
 
-export function AdminView({ currentUser, onBack, onImpersonateSuccess, showToast }: AdminViewProps) {
+export function AdminView({
+  currentUser,
+  onBack,
+  onImpersonateSuccess,
+  showToast,
+  initialSelfSignupEnabled,
+}: AdminViewProps) {
   const [users, setUsers] = useState<AdminUserItem[]>([]);
   const [settings, setSettings] = useState<AdminSettings>({
-    selfSignupEnabled: true,
+    selfSignupEnabled: initialSelfSignupEnabled ?? false,
     rateLimitEnabled: true,
     rateLimitWindow: 15,
     rateLimitMaxAttempts: 20,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [isUpdatingSignup, setIsUpdatingSignup] = useState(false);
+  const [isUpdatingRateLimit, setIsUpdatingRateLimit] = useState(false);
 
   // Reset Lockout identifier
   const [resetIdentifier, setResetIdentifier] = useState("");
@@ -103,32 +112,44 @@ export function AdminView({ currentUser, onBack, onImpersonateSuccess, showToast
   }, []);
 
   const handleToggleSignup = async () => {
+    if (isUpdatingSignup) return;
+    setIsUpdatingSignup(true);
     const nextVal = !settings.selfSignupEnabled;
     setSettings((prev) => ({ ...prev, selfSignupEnabled: nextVal }));
     try {
-      await fetch("/api/admin/settings", {
+      const res = await fetch("/api/admin/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ selfSignupEnabled: nextVal }),
       });
+      if (!res.ok) throw new Error("Failed to update access control");
       showToast("info", "Access Control Updated", `Self-signup is now ${nextVal ? "Enabled" : "Disabled"}.`);
     } catch (err: any) {
+      setSettings((prev) => ({ ...prev, selfSignupEnabled: !nextVal }));
       showToast("error", "Update Failed", err.message);
+    } finally {
+      setIsUpdatingSignup(false);
     }
   };
 
   const handleToggleRateLimit = async () => {
+    if (isUpdatingRateLimit) return;
+    setIsUpdatingRateLimit(true);
     const nextVal = !settings.rateLimitEnabled;
     setSettings((prev) => ({ ...prev, rateLimitEnabled: nextVal }));
     try {
-      await fetch("/api/admin/settings", {
+      const res = await fetch("/api/admin/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rateLimitEnabled: nextVal }),
       });
+      if (!res.ok) throw new Error("Failed to update rate limiting");
       showToast("info", "Rate Limiting Updated", `Rate limiting is now ${nextVal ? "Enabled" : "Disabled"}.`);
     } catch (err: any) {
+      setSettings((prev) => ({ ...prev, rateLimitEnabled: !nextVal }));
       showToast("error", "Update Failed", err.message);
+    } finally {
+      setIsUpdatingRateLimit(false);
     }
   };
 

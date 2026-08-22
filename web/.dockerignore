@@ -11,3 +11,8 @@ coverage
 tmp
 temp
 devnix_*
+devnix.db*
+*.db
+*.db-wal
+*.db-shm
+*.sqlite

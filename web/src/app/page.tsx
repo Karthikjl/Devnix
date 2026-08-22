@@ -910,6 +910,7 @@ export default function DevnixStudio() {
         <AdminView
           currentUser={currentUser}
           onBack={() => setActiveView("editor")}
+          initialSelfSignupEnabled={selfSignupEnabled}
           onImpersonateSuccess={(targetUser) => {
             setCurrentUser(targetUser);
             setActiveView("editor");

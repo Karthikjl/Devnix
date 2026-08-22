@@ -132,17 +132,55 @@ export function executeInLocalSandbox(
         72: "rb", 68: "php", 46: "sh"
       };
 
+      let codeToWrite = sourceCode;
+      if (langId === 74) {
+        try {
+          const ts = require("typescript");
+          const transpileResult = ts.transpileModule(sourceCode, {
+            compilerOptions: {
+              module: ts.ModuleKind.CommonJS,
+              target: ts.ScriptTarget.ES2022,
+              esModuleInterop: true,
+            },
+            reportDiagnostics: true,
+          });
+
+          if (transpileResult.diagnostics && transpileResult.diagnostics.length > 0) {
+            const err = transpileResult.diagnostics[0];
+            const msg = typeof err.messageText === "string" ? err.messageText : err.messageText.messageText;
+            return {
+              stdout: null,
+              stderr: `TypeScript Compilation Error: ${msg}\n`,
+              compile_output: `TypeScript Compilation Error: ${msg}\n`,
+              time: "0.010",
+              memory: 0,
+              status: { id: 6, description: "Compilation Error" },
+            };
+          }
+          codeToWrite = transpileResult.outputText;
+        } catch (tsErr: any) {
+          return {
+            stdout: null,
+            stderr: `TypeScript Error: ${tsErr.message}\n`,
+            compile_output: `TypeScript Error: ${tsErr.message}\n`,
+            time: "0.010",
+            memory: 0,
+            status: { id: 6, description: "Compilation Error" },
+          };
+        }
+      }
+
       if (langId === 62) {
         spawnSync("docker", ["exec", "-i", "judge0-workers-1", "mkdir", "-p", containerFile], { encoding: "utf-8" });
         spawnSync("docker", ["exec", "-i", "judge0-workers-1", "sh", "-c", `cat > "${containerFile}/Main.java"`], {
-          input: sourceCode,
+          input: codeToWrite,
           encoding: "utf-8",
           timeout: 4000,
         });
       } else {
         const ext = extMap[langId] || "py";
         spawnSync("docker", ["exec", "-i", "judge0-workers-1", "sh", "-c", `cat > "${containerFile}.${ext}"`], {
-          input: sourceCode,
+          input: codeToWrite,
           encoding: "utf-8",
           timeout: 4000,
         });

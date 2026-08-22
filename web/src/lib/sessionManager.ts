@@ -51,12 +51,43 @@ export function createInteractiveSession(
         break;
 
       case 63: // JavaScript (Node.js)
-      case 74: // TypeScript
         filePath = path.join(tmpDir, `${uniqueId}.js`);
         fs.writeFileSync(filePath, sourceCode, "utf-8");
         cleanupFiles.push(filePath);
         cmd = "node";
         args = ["--no-warnings", filePath];
+        break;
+
+      case 74: // TypeScript
+        try {
+          const ts = require("typescript");
+          const transpileResult = ts.transpileModule(sourceCode, {
+            compilerOptions: {
+              module: ts.ModuleKind.CommonJS,
+              target: ts.ScriptTarget.ES2022,
+              esModuleInterop: true,
+            },
+            reportDiagnostics: true,
+          });
+
+          if (transpileResult.diagnostics && transpileResult.diagnostics.length > 0) {
+            const err = transpileResult.diagnostics[0];
+            const msg = typeof err.messageText === "string" ? err.messageText : err.messageText.messageText;
+            onData({ type: "stderr", text: `TypeScript Compilation Error: ${msg}\n` });
+            onData({ type: "exit", text: "", code: 1 });
+            return true;
+          }
+
+          filePath = path.join(tmpDir, `${uniqueId}.js`);
+          fs.writeFileSync(filePath, transpileResult.outputText, "utf-8");
+          cleanupFiles.push(filePath);
+          cmd = "node";
+          args = ["--no-warnings", filePath];
+        } catch (tsErr: any) {
+          onData({ type: "stderr", text: `TypeScript Error: ${tsErr.message}\n` });
+          onData({ type: "exit", text: "", code: 1 });
+          return true;
+        }
         break;
 
       case 62: // Java

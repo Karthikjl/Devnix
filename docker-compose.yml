@@ -1,7 +1,5 @@
 services:
-  # ============================================================================
-  # 1. DEVNIX Next.js Web Frontend & API
-  # ============================================================================
+  # 1. Devnix Web Studio (Next.js)
   web:
     build:
       context: ./web
@@ -9,20 +7,20 @@ services:
     ports:
       - "3000:3000"
     environment:
+      - PORT=3000
       - NODE_ENV=production
       - JUDGE0_URL=http://server:2358
-      - PORT=3000
     depends_on:
       - server
     restart: always
 
-  # ============================================================================
-  # 2. Judge0 Code Execution API Server
-  # ============================================================================
+  # 2. Judge0 API Server
   server:
     image: judge0/judge0:latest
     volumes:
       - ./judge0/judge0.conf:/judge0.conf:ro
+      - isolate-tmp:/tmp/isolate
+      - isolate-var:/var/local/lib/isolate
     ports:
       - "2358:2358"
     privileged: true
@@ -34,14 +32,14 @@ services:
       redis:
         condition: service_healthy
 
-  # ============================================================================
-  # 3. Judge0 Sandboxed Execution Workers
-  # ============================================================================
+  # 3. Judge0 Execution Workers
   workers:
     image: judge0/judge0:latest
     command: ["./scripts/workers"]
     volumes:
       - ./judge0/judge0.conf:/judge0.conf:ro
+      - isolate-tmp:/tmp/isolate
+      - isolate-var:/var/local/lib/isolate
     privileged: true
     restart: always
     env_file: ./judge0/judge0.conf
@@ -51,9 +49,7 @@ services:
       redis:
         condition: service_healthy
 
-  # ============================================================================
   # 4. PostgreSQL Database
-  # ============================================================================
   db:
     image: postgres:13.0
     env_file: ./judge0/judge0.conf
@@ -66,9 +62,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ============================================================================
-  # 5. Redis Message Broker & Job Queue
-  # ============================================================================
+  # 5. Redis Queue Store
   redis:
     image: redis:6.0
     command: ["sh", "-c", "docker-entrypoint.sh --requirepass $$REDIS_PASSWORD"]
@@ -85,3 +79,5 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  isolate-tmp:
+  isolate-var:

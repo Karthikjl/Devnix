@@ -3,6 +3,8 @@ services:
     image: judge0/judge0:latest
     volumes:
       - ./judge0.conf:/judge0.conf:ro
+      - shared-tmp:/tmp
+      - shared-isolate:/var/local/lib/isolate
     ports:
       - "2358:2358"
     privileged: true
@@ -19,6 +21,8 @@ services:
     command: ["./scripts/workers"]
     volumes:
       - ./judge0.conf:/judge0.conf:ro
+      - shared-tmp:/tmp
+      - shared-isolate:/var/local/lib/isolate
     privileged: true
     restart: always
     env_file: judge0.conf
@@ -56,3 +60,5 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  shared-tmp:
+  shared-isolate:

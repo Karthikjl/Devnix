@@ -77,6 +77,12 @@ export default function DevnixStudio() {
   const [selectedLanguage, setSelectedLanguage] = useState<Language>(
     SUPPORTED_LANGUAGES[0]
   );
+  const selectedLanguageRef = useRef<Language>(SUPPORTED_LANGUAGES[0]);
+
+  // Keep ref continuously synchronized
+  useEffect(() => {
+    selectedLanguageRef.current = selectedLanguage;
+  }, [selectedLanguage]);
   const [code, setCode] = useState<string>(SUPPORTED_LANGUAGES[0].defaultCode);
   const [stdin, setStdin] = useState<string>("");
   const [executionMode, setExecutionMode] = useState<"interactive" | "batch">("interactive");
@@ -123,6 +129,50 @@ export default function DevnixStudio() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const isSwitchingLanguageRef = useRef<boolean>(false);
+
+  // Load saved preferences and language-wise code on client mount
+  useEffect(() => {
+    isSwitchingLanguageRef.current = true;
+    try {
+      const savedLangId = localStorage.getItem("devnix_selected_lang_id");
+      const savedTheme = localStorage.getItem("devnix_theme");
+      const savedMode = localStorage.getItem("devnix_mode");
+
+      if (savedTheme) setCurrentTheme(savedTheme);
+      if (savedMode === "interactive" || savedMode === "batch") setExecutionMode(savedMode);
+
+      if (savedLangId) {
+        const lang = SUPPORTED_LANGUAGES.find((l) => l.id === Number(savedLangId));
+        if (lang) {
+          setSelectedLanguage(lang);
+          selectedLanguageRef.current = lang;
+          const savedCode = localStorage.getItem(`devnix_code_${lang.id}`);
+          const codeToSet = savedCode !== null ? savedCode : lang.defaultCode;
+          setCode(codeToSet);
+          if (editorRef.current) {
+            editorRef.current.setValue(codeToSet);
+          }
+          const savedStdin = localStorage.getItem(`devnix_stdin_${lang.id}`);
+          if (savedStdin !== null) {
+            setStdin(savedStdin);
+          }
+        }
+      } else {
+        const savedCode = localStorage.getItem(`devnix_code_${SUPPORTED_LANGUAGES[0].id}`);
+        if (savedCode !== null) {
+          setCode(savedCode);
+          if (editorRef.current) {
+            editorRef.current.setValue(savedCode);
+          }
+        }
+      }
+    } catch {}
+    setTimeout(() => {
+      isSwitchingLanguageRef.current = false;
+    }, 150);
+  }, []);
+
   // Fetch dynamic languages from Judge0 API on mount
   useEffect(() => {
     fetch("/api/languages")
@@ -132,6 +182,9 @@ export default function DevnixStudio() {
           setAvailableLanguages(data.languages);
           setSelectedLanguage((prev) => {
             const updated = data.languages.find((l: Language) => l.id === prev.id);
+            if (updated) {
+              selectedLanguageRef.current = updated;
+            }
             return updated || prev;
           });
         }
@@ -145,6 +198,26 @@ export default function DevnixStudio() {
       terminalEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [terminalLogs]);
+
+  // Handle Code Change with Auto-Save
+  const handleCodeChange = (newCode: string) => {
+    setCode(newCode);
+    if (isSwitchingLanguageRef.current) return;
+    try {
+      const activeId = selectedLanguageRef.current?.id || selectedLanguage.id;
+      localStorage.setItem(`devnix_code_${activeId}`, newCode);
+    } catch {}
+  };
+
+  // Handle Stdin Change with Auto-Save
+  const handleStdinChange = (newStdin: string) => {
+    setStdin(newStdin);
+    if (isSwitchingLanguageRef.current) return;
+    try {
+      const activeId = selectedLanguageRef.current?.id || selectedLanguage.id;
+      localStorage.setItem(`devnix_stdin_${activeId}`, newStdin);
+    } catch {}
+  };
 
   // Setup Monaco themes
   const handleEditorWillMount = (monaco: any) => {
@@ -215,26 +288,72 @@ export default function DevnixStudio() {
 
   const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
+    if (code) {
+      editor.setValue(code);
+    }
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       handleRun();
     });
   };
 
+  // Language Switch with per-language code restoration & Monaco buffer sync
   const handleLanguageChange = (lang: Language) => {
+    isSwitchingLanguageRef.current = true;
     setSelectedLanguage(lang);
-    setCode(lang.defaultCode);
+    selectedLanguageRef.current = lang;
+    let targetCode = lang.defaultCode;
+    try {
+      localStorage.setItem("devnix_selected_lang_id", String(lang.id));
+      const savedCode = localStorage.getItem(`devnix_code_${lang.id}`);
+      targetCode = savedCode !== null ? savedCode : lang.defaultCode;
+
+      const savedStdin = localStorage.getItem(`devnix_stdin_${lang.id}`);
+      setStdin(savedStdin !== null ? savedStdin : "");
+    } catch {}
+
+    setCode(targetCode);
+    if (editorRef.current) {
+      editorRef.current.setValue(targetCode);
+    }
+
     setResult(null);
     setTerminalLogs([]);
     setIsLangOpen(false);
+
+    setTimeout(() => {
+      isSwitchingLanguageRef.current = false;
+    }, 100);
   };
 
   const handleThemeChange = (themeId: string) => {
     setCurrentTheme(themeId);
+    try {
+      localStorage.setItem("devnix_theme", themeId);
+    } catch {}
     setIsThemeOpen(false);
   };
 
+  const handleModeChange = (mode: "interactive" | "batch") => {
+    setExecutionMode(mode);
+    try {
+      localStorage.setItem("devnix_mode", mode);
+    } catch {}
+  };
+
   const handleResetCode = () => {
-    setCode(selectedLanguage.defaultCode);
+    isSwitchingLanguageRef.current = true;
+    const activeLang = selectedLanguageRef.current || selectedLanguage;
+    const defaultCode = activeLang.defaultCode;
+    setCode(defaultCode);
+    if (editorRef.current) {
+      editorRef.current.setValue(defaultCode);
+    }
+    try {
+      localStorage.setItem(`devnix_code_${activeLang.id}`, defaultCode);
+    } catch {}
+    setTimeout(() => {
+      isSwitchingLanguageRef.current = false;
+    }, 100);
   };
 
   const handleFormatCode = () => {
@@ -244,24 +363,29 @@ export default function DevnixStudio() {
   };
 
   const handleCopyCode = () => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
+    const codeToCopy = editorRef.current ? editorRef.current.getValue() : code;
+    if (codeToCopy) {
+      navigator.clipboard.writeText(codeToCopy);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    }
   };
 
   const handleCopyOutput = () => {
+    let textToCopy = "";
     if (executionMode === "interactive") {
-      const allText = terminalLogs.map((l) => l.text).join("");
-      navigator.clipboard.writeText(allText);
+      textToCopy = terminalLogs.map((l) => l.text).join("");
     } else {
-      const textToCopy =
+      textToCopy =
         (result?.stdout || "") +
-        (result?.stderr ? "\n" + result.stderr : "") +
+        (result?.stderr ? (result.stdout ? "\n" : "") + result.stderr : "") +
         (result?.compile_output ? "\n" + result.compile_output : "");
-      navigator.clipboard.writeText(textToCopy);
     }
-    setCopiedOutput(true);
-    setTimeout(() => setCopiedOutput(false), 2000);
+    if (textToCopy.trim()) {
+      navigator.clipboard.writeText(textToCopy);
+      setCopiedOutput(true);
+      setTimeout(() => setCopiedOutput(false), 2000);
+    }
   };
 
   const handleRun = () => {
@@ -276,6 +400,7 @@ export default function DevnixStudio() {
   const runInteractiveStreaming = async () => {
     if (isProcessRunning) return;
 
+    const activeLang = selectedLanguageRef.current || selectedLanguage;
     const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     setCurrentSessionId(sessionId);
     setIsProcessRunning(true);
@@ -291,7 +416,7 @@ export default function DevnixStudio() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId,
-          language_id: selectedLanguage.id,
+          language_id: activeLang.id,
           source_code: codeToRun,
         }),
       });
@@ -387,6 +512,7 @@ export default function DevnixStudio() {
   // 2. Batch Mode
   const runBatchCode = async () => {
     if (isLoading) return;
+    const activeLang = selectedLanguageRef.current || selectedLanguage;
     setIsLoading(true);
     setActiveTab("output");
     setResult({
@@ -400,7 +526,7 @@ export default function DevnixStudio() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          language_id: selectedLanguage.id,
+          language_id: activeLang.id,
           source_code: codeToRun,
           stdin: stdin,
         }),
@@ -439,7 +565,7 @@ export default function DevnixStudio() {
               </span>
             </div>
             <p className="text-[10px] font-bold text-neutral-500 hidden sm:block leading-tight mt-0.5">
-              Online Code Engine & Live Terminal
+Online Code Engine & Live Terminal
             </p>
           </div>
         </div>
@@ -449,7 +575,7 @@ export default function DevnixStudio() {
           {/* Execution Mode Switcher */}
           <div className="flex items-center bg-[#f0ede6] border-2 border-black p-0.5 rounded-lg shadow-[2px_2px_0px_#000]">
             <button
-              onClick={() => setExecutionMode("interactive")}
+              onClick={() => handleModeChange("interactive")}
               className={`px-3 py-1.5 text-xs font-black rounded-md transition-all flex items-center gap-1.5 ${
                 executionMode === "interactive"
                   ? "bg-[#22c55e] text-black border border-black shadow-[1.5px_1.5px_0px_#000]"
@@ -461,7 +587,7 @@ export default function DevnixStudio() {
             </button>
 
             <button
-              onClick={() => setExecutionMode("batch")}
+              onClick={() => handleModeChange("batch")}
               className={`px-3 py-1.5 text-xs font-black rounded-md transition-all flex items-center gap-1.5 ${
                 executionMode === "batch"
                   ? "bg-[#00f0ff] text-black border border-black shadow-[1.5px_1.5px_0px_#000]"
@@ -784,7 +910,7 @@ export default function DevnixStudio() {
               language={selectedLanguage.monacoLang}
               theme={currentTheme}
               value={code}
-              onChange={(value) => setCode(value || "")}
+              onChange={(value) => handleCodeChange(value || "")}
               beforeMount={handleEditorWillMount}
               onMount={handleEditorDidMount}
               options={{
@@ -1024,7 +1150,7 @@ export default function DevnixStudio() {
                 <div className="shrink-0 flex items-center justify-between text-[11px] text-neutral-400">
                   <span>Standard Input (one line per input):</span>
                   <button
-                    onClick={() => setStdin("")}
+                    onClick={() => handleStdinChange("")}
                     className="text-red-400 hover:underline"
                   >
                     Clear
@@ -1032,7 +1158,7 @@ export default function DevnixStudio() {
                 </div>
                 <textarea
                   value={stdin}
-                  onChange={(e) => setStdin(e.target.value)}
+                  onChange={(e) => handleStdinChange(e.target.value)}
                   placeholder="Paste or type inputs here..."
                   className="w-full flex-1 min-h-0 p-2 bg-[#1a1d26] text-white rounded border border-neutral-700 font-mono text-xs resize-none outline-none focus:border-[#38bdf8]"
                 />

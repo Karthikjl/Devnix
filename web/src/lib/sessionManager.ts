@@ -2,10 +2,11 @@ import { spawn, ChildProcess } from "child_process";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { executeInLocalSandbox, checkCommandExists } from "@/lib/localSandbox";
 
 interface ExecutionSession {
   id: string;
-  process: ChildProcess;
+  process?: ChildProcess;
   cleanupFiles: string[];
   startTime: number;
   onData: (chunk: { type: "stdout" | "stderr" | "status" | "exit"; text: string; code?: number }) => void;
@@ -28,7 +29,6 @@ export function createInteractiveSession(
   sourceCode: string,
   onData: (chunk: { type: "stdout" | "stderr" | "status" | "exit"; text: string; code?: number }) => void
 ): boolean {
-  // Kill existing session if any
   if (sessions.has(sessionId)) {
     killSession(sessionId);
   }
@@ -47,10 +47,10 @@ export function createInteractiveSession(
         fs.writeFileSync(filePath, sourceCode, "utf-8");
         cleanupFiles.push(filePath);
         cmd = "python";
-        args = ["-u", filePath]; // -u forces unbuffered binary stdout and stderr
+        args = ["-u", filePath];
         break;
 
-      case 63: // JavaScript (Node)
+      case 63: // JavaScript (Node.js)
       case 74: // TypeScript
         filePath = path.join(tmpDir, `${uniqueId}.js`);
         fs.writeFileSync(filePath, sourceCode, "utf-8");
@@ -59,28 +59,177 @@ export function createInteractiveSession(
         args = ["--no-warnings", filePath];
         break;
 
+      case 62: // Java
+        if (checkCommandExists("javac") && checkCommandExists("java")) {
+          const javaDir = path.join(tmpDir, uniqueId);
+          fs.mkdirSync(javaDir, { recursive: true });
+          filePath = path.join(javaDir, `Main.java`);
+          fs.writeFileSync(filePath, sourceCode, "utf-8");
+          cleanupFiles.push(javaDir);
+
+          const { execSync } = require("child_process");
+          try {
+            execSync(`javac "${filePath}"`, { cwd: javaDir, timeout: 8000, stdio: "pipe" });
+            cmd = "java";
+            args = ["-cp", javaDir, "Main"];
+          } catch (compileErr: any) {
+            onData({ type: "stderr", text: compileErr.stderr ? compileErr.stderr.toString("utf-8") : compileErr.message });
+            onData({ type: "exit", text: "", code: 1 });
+            cleanupSession(sessionId);
+            return true;
+          }
+        } else if (checkCommandExists("java")) {
+          filePath = path.join(tmpDir, `${uniqueId}.java`);
+          fs.writeFileSync(filePath, sourceCode, "utf-8");
+          cleanupFiles.push(filePath);
+          cmd = "java";
+          args = [filePath];
+        } else {
+          // Fallback to local sandbox runner
+          const res = executeInLocalSandbox(langId, sourceCode, "");
+          if (res.stdout) onData({ type: "stdout", text: res.stdout });
+          if (res.stderr) onData({ type: "stderr", text: res.stderr });
+          if (res.compile_output) onData({ type: "stderr", text: res.compile_output });
+          onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
+          return true;
+        }
+        break;
+
+      case 54: // C++
+      case 50: // C
+        const isCpp = langId === 54;
+        const compiler = isCpp ? "g++" : "gcc";
+        const srcExt = isCpp ? "cpp" : "c";
+        filePath = path.join(tmpDir, `${uniqueId}.${srcExt}`);
+        const exePath = path.join(tmpDir, `${uniqueId}.exe`);
+        fs.writeFileSync(filePath, sourceCode, "utf-8");
+        cleanupFiles.push(filePath, exePath);
+
+        if (checkCommandExists(compiler)) {
+          const { execSync } = require("child_process");
+          try {
+            execSync(`${compiler} "${filePath}" -o "${exePath}"`, { timeout: 8000, stdio: "pipe" });
+            cmd = exePath;
+            args = [];
+          } catch (compileErr: any) {
+            onData({ type: "stderr", text: compileErr.stderr ? compileErr.stderr.toString("utf-8") : compileErr.message });
+            onData({ type: "exit", text: "", code: 1 });
+            cleanupSession(sessionId);
+            return true;
+          }
+        } else {
+          const res = executeInLocalSandbox(langId, sourceCode, "");
+          if (res.stdout) onData({ type: "stdout", text: res.stdout });
+          if (res.stderr) onData({ type: "stderr", text: res.stderr });
+          onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
+          return true;
+        }
+        break;
+
+      case 73: // Rust
+        filePath = path.join(tmpDir, `${uniqueId}.rs`);
+        const rustExe = path.join(tmpDir, `${uniqueId}.exe`);
+        fs.writeFileSync(filePath, sourceCode, "utf-8");
+        cleanupFiles.push(filePath, rustExe);
+
+        if (checkCommandExists("rustc")) {
+          const { execSync } = require("child_process");
+          try {
+            execSync(`rustc "${filePath}" -o "${rustExe}"`, { timeout: 8000, stdio: "pipe" });
+            cmd = rustExe;
+            args = [];
+          } catch (compileErr: any) {
+            onData({ type: "stderr", text: compileErr.stderr ? compileErr.stderr.toString("utf-8") : compileErr.message });
+            onData({ type: "exit", text: "", code: 1 });
+            cleanupSession(sessionId);
+            return true;
+          }
+        } else {
+          const res = executeInLocalSandbox(langId, sourceCode, "");
+          if (res.stdout) onData({ type: "stdout", text: res.stdout });
+          if (res.stderr) onData({ type: "stderr", text: res.stderr });
+          onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
+          return true;
+        }
+        break;
+
+      case 60: // Go
+        filePath = path.join(tmpDir, `${uniqueId}.go`);
+        fs.writeFileSync(filePath, sourceCode, "utf-8");
+        cleanupFiles.push(filePath);
+
+        if (checkCommandExists("go")) {
+          cmd = "go";
+          args = ["run", filePath];
+        } else {
+          const res = executeInLocalSandbox(langId, sourceCode, "");
+          if (res.stdout) onData({ type: "stdout", text: res.stdout });
+          if (res.stderr) onData({ type: "stderr", text: res.stderr });
+          onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
+          return true;
+        }
+        break;
+
+      case 72: // Ruby
+        filePath = path.join(tmpDir, `${uniqueId}.rb`);
+        fs.writeFileSync(filePath, sourceCode, "utf-8");
+        cleanupFiles.push(filePath);
+
+        if (checkCommandExists("ruby")) {
+          cmd = "ruby";
+          args = [filePath];
+        } else {
+          const res = executeInLocalSandbox(langId, sourceCode, "");
+          if (res.stdout) onData({ type: "stdout", text: res.stdout });
+          if (res.stderr) onData({ type: "stderr", text: res.stderr });
+          onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
+          return true;
+        }
+        break;
+
+      case 68: // PHP
+        filePath = path.join(tmpDir, `${uniqueId}.php`);
+        fs.writeFileSync(filePath, sourceCode, "utf-8");
+        cleanupFiles.push(filePath);
+
+        if (checkCommandExists("php")) {
+          cmd = "php";
+          args = [filePath];
+        } else {
+          const res = executeInLocalSandbox(langId, sourceCode, "");
+          if (res.stdout) onData({ type: "stdout", text: res.stdout });
+          if (res.stderr) onData({ type: "stderr", text: res.stderr });
+          onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
+          return true;
+        }
+        break;
+
       case 46: // Bash
         filePath = path.join(tmpDir, `${uniqueId}.sh`);
         fs.writeFileSync(filePath, sourceCode.replace(/\r\n/g, "\n"), "utf-8");
         cleanupFiles.push(filePath);
+
         if (fs.existsSync("C:\\Program Files\\Git\\bin\\bash.exe")) {
           cmd = "C:\\Program Files\\Git\\bin\\bash.exe";
           args = [filePath];
-        } else {
+        } else if (checkCommandExists("bash")) {
           cmd = "bash";
           args = [filePath];
+        } else {
+          const res = executeInLocalSandbox(langId, sourceCode, "");
+          if (res.stdout) onData({ type: "stdout", text: res.stdout });
+          if (res.stderr) onData({ type: "stderr", text: res.stderr });
+          onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
+          return true;
         }
         break;
 
       default:
-        // For other languages without live compiler on host
-        filePath = path.join(tmpDir, `${uniqueId}.py`);
-        const fallbackScript = `import time, sys\nprint("⚡ Devnix Interactive Runner Demo")\nname = input("Enter your name: ")\nprint(f"Hello, {name}! Live streaming active.")\nage = input("Enter your age: ")\nprint(f"Recorded age: {age}. Process finished successfully.")\n`;
-        fs.writeFileSync(filePath, fallbackScript, "utf-8");
-        cleanupFiles.push(filePath);
-        cmd = "python";
-        args = ["-u", filePath];
-        break;
+        const res = executeInLocalSandbox(langId, sourceCode, "");
+        if (res.stdout) onData({ type: "stdout", text: res.stdout });
+        if (res.stderr) onData({ type: "stderr", text: res.stderr });
+        onData({ type: "exit", text: "", code: res.status.id === 3 ? 0 : 1 });
+        return true;
     }
 
     const child = spawn(cmd, args, {
@@ -151,7 +300,7 @@ export function killSession(sessionId: string): boolean {
   if (!session) return false;
 
   try {
-    session.process.kill("SIGTERM");
+    session.process?.kill("SIGTERM");
   } catch {}
 
   cleanupSession(sessionId);
@@ -164,7 +313,12 @@ function cleanupSession(sessionId: string) {
     for (const file of session.cleanupFiles) {
       if (fs.existsSync(file)) {
         try {
-          fs.unlinkSync(file);
+          const stat = fs.statSync(file);
+          if (stat.isDirectory()) {
+            fs.rmSync(file, { recursive: true, force: true });
+          } else {
+            fs.unlinkSync(file);
+          }
         } catch {}
       }
     }

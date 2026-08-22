@@ -132,14 +132,14 @@ export function MustResetPasswordModal({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="mt-2 w-full py-2.5 px-4 bg-[#22c55e] text-black hover:bg-[#16a34a] font-black text-xs uppercase tracking-wider rounded-xl border-2 border-black shadow-[3px_3px_0px_#000] hover:translate-x-[1px] hover:translate-y-[1px] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            className="mt-2 w-full py-2.5 px-4 bg-[#ffe600] text-black hover:bg-[#ffd500] font-black text-xs uppercase tracking-wider rounded-xl border-2 border-black shadow-[3px_3px_0px_#000] hover:translate-x-[1px] hover:translate-y-[1px] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
             {isSubmitting ? (
-              <span>Updating Password...</span>
+              <span className="text-black font-black">Updating Password...</span>
             ) : (
               <>
-                <span>Set New Password & Enter Studio</span>
-                <Check className="w-4 h-4 stroke-[3]" />
+                <span className="text-black font-black">Set New Password & Enter Studio</span>
+                <Check className="w-4 h-4 stroke-[3] text-black" />
               </>
             )}
           </button>

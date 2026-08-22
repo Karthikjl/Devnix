@@ -281,7 +281,7 @@ export function ProfileView({ user, onUpdateUser, onBack, showToast }: ProfileVi
                 <button
                   type="submit"
                   disabled={isSavingPassword}
-                  className="neo-btn bg-[#22c55e] text-black hover:bg-[#16a34a] px-4 py-2 text-xs font-bold"
+                  className="neo-btn bg-[#ffe600] text-black hover:bg-[#ffd500] px-4 py-2 text-xs font-black border-2 border-black shadow-[2px_2px_0px_#000] cursor-pointer"
                 >
                   {isSavingPassword ? "Updating..." : "Update Password"}
                 </button>

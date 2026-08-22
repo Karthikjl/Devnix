@@ -777,9 +777,9 @@ export default function DevnixStudio() {
         </div>
       )}
 
-      {/* ⚡ HEADER BAR */}
-      <header className="shrink-0 neo-box-lg bg-white p-2.5 px-3 md:px-4 flex flex-wrap items-center justify-between gap-3 relative z-30">
-        {/* Brand Logo & Product Name */}
+      {/* ⚡ 1. CLEAN TOP GLOBAL HEADER (Brand & Profile Only) */}
+      <header className="shrink-0 neo-box-lg bg-white p-2.5 px-3 md:px-4 flex items-center justify-between gap-3 relative z-30">
+        {/* Left: Brand Logo & Product Name */}
         <div
           onClick={() => setActiveView("editor")}
           className="flex items-center gap-2.5 cursor-pointer select-none"
@@ -804,261 +804,19 @@ export default function DevnixStudio() {
           </div>
         </div>
 
-        {/* Center: Mode Switcher, Language & Theme Controls */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Execution Mode Switcher */}
-          <div className="flex items-center bg-[#f0ede6] border-2 border-black p-0.5 rounded-lg shadow-[2px_2px_0px_#000]">
-            <button
-              onClick={() => handleModeChange("interactive")}
-              className={`px-3 py-1.5 text-xs font-black rounded-md transition-all flex items-center gap-1.5 ${
-                executionMode === "interactive"
-                  ? "bg-[#22c55e] text-black border border-black shadow-[1.5px_1.5px_0px_#000]"
-                  : "text-neutral-600 hover:text-black"
-              }`}
-            >
-              <Radio className="w-3.5 h-3.5" />
-              <span>Real-Time</span>
-            </button>
-
-            <button
-              onClick={() => handleModeChange("batch")}
-              className={`px-3 py-1.5 text-xs font-black rounded-md transition-all flex items-center gap-1.5 ${
-                executionMode === "batch"
-                  ? "bg-[#00f0ff] text-black border border-black shadow-[1.5px_1.5px_0px_#000]"
-                  : "text-neutral-600 hover:text-black"
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Batch Stdin</span>
-            </button>
-          </div>
-
-          {/* 🌟 Custom Neobrutalist Language Selector */}
-          <div className="relative" ref={langDropdownRef}>
-            <button
-              type="button"
-              onClick={() => {
-                const nextState = !isLangOpen;
-                setIsLangOpen(nextState);
-                setIsThemeOpen(false);
-                if (nextState) {
-                  setTimeout(() => langSearchInputRef.current?.focus(), 50);
-                } else {
-                  setLangSearch("");
-                }
-              }}
-              className="neo-btn bg-white hover:bg-neutral-50 py-1.5 px-3 text-xs font-black flex items-center gap-2 border-2 border-black shadow-[2.5px_2.5px_0px_#000]"
-            >
-              <Code2 className="w-3.5 h-3.5 text-black stroke-[2.5]" />
-              <span>{selectedLanguage.label}</span>
-              <span className="bg-[#ffe600] border border-black text-[9px] px-1 py-0.2 rounded font-mono font-black">
-                {selectedLanguage.version}
-              </span>
-              <ChevronDown
-                className={`w-3.5 h-3.5 stroke-[3] transition-transform duration-150 ${
-                  isLangOpen ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-
-            {/* Custom Neobrutalist Language Menu */}
-            {isLangOpen && (
-              <div className="absolute top-full left-0 mt-2 w-72 bg-[#fffdfa] border-[2.5px] border-black rounded-xl shadow-[5px_5px_0px_#000] z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-                {/* 🔍 Premium Neobrutalist Search Bar Header */}
-                <div className="bg-[#f6f3eb] p-2.5 border-b-[2px] border-black">
-                  <div className="flex items-center justify-between mb-1.5 px-0.5">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-neutral-600">
-                      Select Compiler
-                    </span>
-                    <span className="bg-[#ffe600] text-black border border-black text-[9px] font-black font-mono px-1.5 py-0.5 rounded shadow-[1px_1px_0px_#000]">
-                      {availableLanguages.length} RUNTIMES
-                    </span>
-                  </div>
-
-                  <div className="relative flex items-center">
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 text-black pointer-events-none stroke-[2.5]" />
-                    <input
-                      ref={langSearchInputRef}
-                      type="text"
-                      value={langSearch}
-                      onChange={(e) => setLangSearch(e.target.value)}
-                      placeholder="Search (e.g. py, java, c, rust)..."
-                      className="w-full bg-white text-black font-mono text-xs font-bold pl-8 pr-7 py-2 rounded-lg border-[2px] border-black shadow-[2px_2px_0px_#000] outline-none transition-all placeholder:text-neutral-400 placeholder:font-sans placeholder:font-medium focus:shadow-[3px_3px_0px_#00f0ff] focus:border-black"
-                    />
-                    {langSearch ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setLangSearch("");
-                          langSearchInputRef.current?.focus();
-                        }}
-                        className="absolute right-2.5 text-neutral-400 hover:text-black p-0.5 hover:bg-neutral-100 rounded transition-colors"
-                      >
-                        <X className="w-3.5 h-3.5 stroke-[2.5]" />
-                      </button>
-                    ) : (
-                      <span className="absolute right-2 text-[9px] font-mono text-neutral-400 border border-neutral-300 rounded px-1 pointer-events-none">
-                        /
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Filtered Languages List */}
-                <div className="p-1.5 max-h-64 overflow-y-auto space-y-1">
-                  {availableLanguages
-                    .filter((lang) => {
-                      if (!langSearch.trim()) return true;
-                      const q = langSearch.toLowerCase();
-                      return (
-                        lang.label.toLowerCase().includes(q) ||
-                        lang.name.toLowerCase().includes(q) ||
-                        lang.extension.toLowerCase().includes(q) ||
-                        lang.version.toLowerCase().includes(q)
-                      );
-                    })
-                    .map((lang) => {
-                      const isSelected = lang.id === selectedLanguage.id;
-                      return (
-                        <button
-                          key={lang.id}
-                          onClick={() => {
-                            handleLanguageChange(lang);
-                            setLangSearch("");
-                            setIsLangOpen(false);
-                          }}
-                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-bold transition-all text-left border-[2px] ${
-                            isSelected
-                              ? "bg-[#ffe600] text-black font-black border-black shadow-[2px_2px_0px_#000]"
-                              : "border-transparent hover:border-black hover:bg-[#00f0ff]/25 hover:shadow-[2px_2px_0px_#000] text-neutral-900 bg-white"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span
-                              className="w-2.5 h-2.5 rounded-full border-[1.5px] border-black shrink-0 shadow-[1px_1px_0px_#000]"
-                              style={{ backgroundColor: lang.badgeColor || "#00f0ff" }}
-                            />
-                            <span className="truncate">{lang.label}</span>
-                            <span className="text-[9px] font-mono opacity-60 bg-neutral-100 border border-neutral-300 px-1 rounded">
-                              .{lang.extension}
-                            </span>
-                          </div>
-                          <span className="text-[10px] font-mono font-bold bg-neutral-50 border border-black/40 px-1.5 py-0.5 rounded shadow-[1px_1px_0px_#000] shrink-0 ml-1">
-                            {lang.version}
-                          </span>
-                        </button>
-                      );
-                    })}
-
-                  {availableLanguages.filter((lang) => {
-                    const q = langSearch.toLowerCase();
-                    return (
-                      lang.label.toLowerCase().includes(q) ||
-                      lang.name.toLowerCase().includes(q) ||
-                      lang.extension.toLowerCase().includes(q) ||
-                      lang.version.toLowerCase().includes(q)
-                    );
-                  }).length === 0 && (
-                    <div className="p-4 text-center">
-                      <p className="text-xs font-bold text-neutral-700">No language found</p>
-                      <p className="text-[10px] font-mono text-neutral-400 mt-0.5">
-                        &quot;{langSearch}&quot; doesn&apos;t match any compiler
-                      </p>
-                      <button
-                        onClick={() => {
-                          setLangSearch("");
-                          langSearchInputRef.current?.focus();
-                        }}
-                        className="mt-2 text-[10px] font-black bg-[#ffe600] border border-black px-2 py-1 rounded shadow-[1.5px_1.5px_0px_#000] hover:bg-[#ffd500]"
-                      >
-                        Clear Search
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 🌟 Custom Neobrutalist Theme Selector */}
-          <div className="relative" ref={themeDropdownRef}>
-            <button
-              type="button"
-              onClick={() => {
-                setIsThemeOpen(!isThemeOpen);
-                setIsLangOpen(false);
-              }}
-              className="neo-btn bg-white hover:bg-neutral-50 py-1.5 px-3 text-xs font-black flex items-center gap-2 border-2 border-black shadow-[2.5px_2.5px_0px_#000]"
-            >
-              <Palette className="w-3.5 h-3.5 text-neutral-700 stroke-[2.5]" />
-              <span className="max-w-[110px] truncate">
-                {THEMES.find((t) => t.id === currentTheme)?.name || currentTheme}
-              </span>
-              <ChevronDown
-                className={`w-3.5 h-3.5 stroke-[3] transition-transform duration-150 ${
-                  isThemeOpen ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-
-            {/* Custom Neobrutalist Theme Menu */}
-            {isThemeOpen && (
-              <div className="absolute top-full left-0 mt-1.5 w-56 bg-white border-[2.5px] border-black rounded-lg shadow-[4px_4px_0px_#000] z-50 p-1.5 max-h-72 overflow-y-auto">
-                <div className="text-[10px] font-black uppercase text-neutral-400 px-2 py-1 border-b border-neutral-200 mb-1">
-                  VS Code Theme
-                </div>
-                {THEMES.map((theme) => {
-                  const isSelected = theme.id === currentTheme;
-                  return (
-                    <button
-                      key={theme.id}
-                      onClick={() => handleThemeChange(theme.id)}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs font-bold transition-all text-left mb-0.5 ${
-                        isSelected
-                          ? "bg-[#00f0ff] text-black font-black border border-black shadow-[1.5px_1.5px_0px_#000]"
-                          : "hover:bg-[#ffe600] hover:text-black text-neutral-800"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="w-2.5 h-2.5 rounded-full border border-black shadow-[1px_1px_0px_#000]"
-                          style={{ backgroundColor: theme.dotColor }}
-                        />
-                        <span>{theme.name}</span>
-                      </div>
-                      {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Reset Template */}
-          <button
-            onClick={handleResetCode}
-            title="Reset code template"
-            className="neo-btn bg-white hover:bg-neutral-100 p-1.5 text-xs flex items-center gap-1"
-          >
-            <RotateCcw className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span className="hidden sm:inline font-bold text-[11px]">Reset</span>
-          </button>
-        </div>
-
-        {/* Right: User Auth & Run Actions */}
+        {/* Right: User Profile & Account Controls */}
         <div className="flex items-center gap-2">
-          {/* User Account Controls */}
-          {currentUser ? (
+          {currentUser && (
             <div className="relative" ref={userMenuRef}>
               <button
                 type="button"
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className="neo-btn py-1.5 px-3 text-xs font-black flex items-center gap-2 border-2 border-black shadow-[2.5px_2.5px_0px_#000] bg-[#ffe600] text-black hover:bg-[#ffd500]"
+                className="neo-btn py-1.5 px-3 text-xs font-black flex items-center gap-2 border-2 border-black shadow-[2.5px_2.5px_0px_#000] bg-[#ffe600] text-black hover:bg-[#ffd500] cursor-pointer"
               >
                 <div className="w-5 h-5 rounded-full bg-black text-white flex items-center justify-center text-[10px] font-black border border-black">
                   {currentUser.displayName.charAt(0).toUpperCase()}
                 </div>
-                <span className="max-w-[100px] truncate text-black font-black">{currentUser.displayName}</span>
+                <span className="max-w-[120px] truncate text-black font-black">{currentUser.displayName}</span>
                 <ChevronDown
                   className={`w-3.5 h-3.5 stroke-[3] text-black transition-transform ${
                     isUserMenuOpen ? "rotate-180" : ""
@@ -1128,7 +886,7 @@ export default function DevnixStudio() {
 
                   <button
                     onClick={handleLogout}
-                    className="w-full text-left p-2 rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 transition-all flex items-center gap-2"
+                    className="w-full text-left p-2 rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 transition-all flex items-center gap-2 cursor-pointer"
                   >
                     <LogOut className="w-3.5 h-3.5 stroke-[2.5]" />
                     <span>Sign Out</span>
@@ -1136,41 +894,6 @@ export default function DevnixStudio() {
                 </div>
               )}
             </div>
-          ) : (
-            <button
-              onClick={() => setIsAuthModalOpen(true)}
-              className="neo-btn bg-[#22c55e] text-black hover:bg-[#16a34a] px-3.5 py-2 text-xs font-black flex items-center gap-1.5 shadow-[2.5px_2.5px_0px_#000]"
-            >
-              <User className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>Sign In</span>
-            </button>
-          )}
-
-          {/* Primary Run / Stop Action */}
-          {isProcessRunning ? (
-            <button
-              onClick={handleStopProcess}
-              className="neo-btn bg-[#ff5277] text-white hover:bg-red-600 px-4 py-2 text-xs md:text-sm font-black flex items-center gap-1.5 shadow-[3px_3px_0px_#000]"
-            >
-              <Square className="w-3.5 h-3.5 fill-white stroke-[2]" />
-              <span>STOP</span>
-            </button>
-          ) : (
-            <button
-              onClick={handleRun}
-              disabled={isLoading}
-              className="neo-btn bg-[#ffe600] hover:bg-[#ffde59] px-5 py-2 text-xs md:text-sm font-black flex items-center gap-1.5 shadow-[3px_3px_0px_#000]"
-            >
-              <Play
-                className={`w-3.5 h-3.5 stroke-[3] fill-black ${
-                  isLoading ? "animate-spin" : ""
-                }`}
-              />
-              <span>{isLoading ? "RUNNING..." : "RUN CODE"}</span>
-              <kbd className="hidden lg:inline-block bg-black text-white text-[9px] font-mono px-1 py-0.5 rounded border border-black ml-1">
-                Ctrl+Enter
-              </kbd>
-            </button>
           )}
         </div>
       </header>
@@ -1200,21 +923,195 @@ export default function DevnixStudio() {
         {/* LEFT COLUMN: MONACO / VS CODE EDITOR (7 Columns)                          */}
         {/* ========================================================================= */}
         <div className="lg:col-span-7 flex flex-col neo-box overflow-hidden bg-[#ffffff] h-full min-h-0">
-          {/* Editor Header Bar */}
+          {/* Editor Header Bar with Integrated Language, Theme, and Editor Tools */}
           <div className="shrink-0 bg-[#f0ede6] border-b-[2.5px] border-black p-2 px-3 flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <div className="flex gap-1.5 mr-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex gap-1.5 mr-0.5">
                 <div className="w-2.5 h-2.5 rounded-full border border-black bg-[#ff5277]" />
                 <div className="w-2.5 h-2.5 rounded-full border border-black bg-[#ffe600]" />
                 <div className="w-2.5 h-2.5 rounded-full border border-black bg-[#4ade80]" />
               </div>
-              <div className="bg-white border-[1.5px] border-black px-2 py-0.5 rounded text-xs font-mono font-bold shadow-[1.5px_1.5px_0px_#000] flex items-center gap-1">
-                <FileCode2 className="w-3 h-3 text-black" />
-                <span>main.{selectedLanguage.extension}</span>
+
+              {/* 🌟 Custom Neobrutalist Language Selector */}
+              <div className="relative" ref={langDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextState = !isLangOpen;
+                    setIsLangOpen(nextState);
+                    setIsThemeOpen(false);
+                    if (nextState) {
+                      setTimeout(() => langSearchInputRef.current?.focus(), 50);
+                    } else {
+                      setLangSearch("");
+                    }
+                  }}
+                  className="neo-btn bg-white hover:bg-neutral-50 py-1 px-2.5 text-xs font-black flex items-center gap-1.5 border-2 border-black shadow-[2px_2px_0px_#000] cursor-pointer"
+                >
+                  <Code2 className="w-3.5 h-3.5 text-black stroke-[2.5]" />
+                  <span>{selectedLanguage.label}</span>
+                  <span className="bg-[#ffe600] border border-black text-[9px] px-1 py-0.2 rounded font-mono font-black">
+                    {selectedLanguage.version}
+                  </span>
+                  <ChevronDown
+                    className={`w-3 h-3 stroke-[3] transition-transform duration-150 ${
+                      isLangOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {/* Custom Neobrutalist Language Menu */}
+                {isLangOpen && (
+                  <div className="absolute top-full left-0 mt-1.5 w-72 bg-[#fffdfa] border-[2.5px] border-black rounded-xl shadow-[5px_5px_0px_#000] z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                    {/* 🔍 Premium Neobrutalist Search Bar Header */}
+                    <div className="bg-[#f6f3eb] p-2.5 border-b-[2px] border-black">
+                      <div className="flex items-center justify-between mb-1.5 px-0.5">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-neutral-600">
+                          Select Compiler
+                        </span>
+                        <span className="bg-[#ffe600] text-black border border-black text-[9px] font-black font-mono px-1.5 py-0.5 rounded shadow-[1px_1px_0px_#000]">
+                          {availableLanguages.length} RUNTIMES
+                        </span>
+                      </div>
+
+                      <div className="relative flex items-center">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 text-black pointer-events-none stroke-[2.5]" />
+                        <input
+                          ref={langSearchInputRef}
+                          type="text"
+                          value={langSearch}
+                          onChange={(e) => setLangSearch(e.target.value)}
+                          placeholder="Search (e.g. py, java, c, rust)..."
+                          className="w-full bg-white text-black font-mono text-xs font-bold pl-8 pr-7 py-1.5 rounded-lg border-[2px] border-black shadow-[2px_2px_0px_#000] outline-none transition-all placeholder:text-neutral-400 focus:shadow-[3px_3px_0px_#00f0ff]"
+                        />
+                        {langSearch && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLangSearch("");
+                              langSearchInputRef.current?.focus();
+                            }}
+                            className="absolute right-2 text-neutral-400 hover:text-black p-0.5"
+                          >
+                            <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Filtered Languages List */}
+                    <div className="p-1.5 max-h-64 overflow-y-auto space-y-1">
+                      {availableLanguages
+                        .filter((lang) => {
+                          if (!langSearch.trim()) return true;
+                          const q = langSearch.toLowerCase();
+                          return (
+                            lang.label.toLowerCase().includes(q) ||
+                            lang.name.toLowerCase().includes(q) ||
+                            lang.extension.toLowerCase().includes(q) ||
+                            lang.version.toLowerCase().includes(q)
+                          );
+                        })
+                        .map((lang) => {
+                          const isSelected = lang.id === selectedLanguage.id;
+                          return (
+                            <button
+                              key={lang.id}
+                              onClick={() => {
+                                handleLanguageChange(lang);
+                                setLangSearch("");
+                                setIsLangOpen(false);
+                              }}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all text-left border-[2px] cursor-pointer ${
+                                isSelected
+                                  ? "bg-[#ffe600] text-black font-black border-black shadow-[2px_2px_0px_#000]"
+                                  : "border-transparent hover:border-black hover:bg-[#00f0ff]/25 hover:shadow-[2px_2px_0px_#000] text-neutral-900 bg-white"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full border-[1.5px] border-black shrink-0 shadow-[1px_1px_0px_#000]"
+                                  style={{ backgroundColor: lang.badgeColor || "#00f0ff" }}
+                                />
+                                <span className="truncate">{lang.label}</span>
+                                <span className="text-[9px] font-mono opacity-60 bg-neutral-100 border border-neutral-300 px-1 rounded">
+                                  .{lang.extension}
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-mono font-bold bg-neutral-50 border border-black/40 px-1.5 py-0.5 rounded shadow-[1px_1px_0px_#000] shrink-0 ml-1">
+                                {lang.version}
+                              </span>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
               </div>
-              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 bg-[#00f0ff] border border-black rounded shadow-[1px_1px_0px_#000]">
-                VS CODE
-              </span>
+
+              {/* 🌟 Custom Neobrutalist Theme Selector */}
+              <div className="relative" ref={themeDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsThemeOpen(!isThemeOpen);
+                    setIsLangOpen(false);
+                  }}
+                  className="neo-btn bg-white hover:bg-neutral-50 py-1 px-2.5 text-xs font-black flex items-center gap-1.5 border-2 border-black shadow-[2px_2px_0px_#000] cursor-pointer"
+                >
+                  <Palette className="w-3.5 h-3.5 text-neutral-700 stroke-[2.5]" />
+                  <span className="max-w-[95px] truncate">
+                    {THEMES.find((t) => t.id === currentTheme)?.name || currentTheme}
+                  </span>
+                  <ChevronDown
+                    className={`w-3 h-3 stroke-[3] transition-transform duration-150 ${
+                      isThemeOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {/* Custom Neobrutalist Theme Menu */}
+                {isThemeOpen && (
+                  <div className="absolute top-full left-0 mt-1.5 w-52 bg-white border-[2.5px] border-black rounded-lg shadow-[4px_4px_0px_#000] z-50 p-1.5 max-h-72 overflow-y-auto">
+                    <div className="text-[10px] font-black uppercase text-neutral-400 px-2 py-1 border-b border-neutral-200 mb-1">
+                      VS Code Theme
+                    </div>
+                    {THEMES.map((theme) => {
+                      const isSelected = theme.id === currentTheme;
+                      return (
+                        <button
+                          key={theme.id}
+                          onClick={() => handleThemeChange(theme.id)}
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs font-bold transition-all text-left mb-0.5 cursor-pointer ${
+                            isSelected
+                              ? "bg-[#00f0ff] text-black font-black border border-black shadow-[1.5px_1.5px_0px_#000]"
+                              : "hover:bg-[#ffe600] hover:text-black text-neutral-800"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full border border-black shadow-[1px_1px_0px_#000]"
+                              style={{ backgroundColor: theme.dotColor }}
+                            />
+                            <span>{theme.name}</span>
+                          </div>
+                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Reset Template */}
+              <button
+                onClick={handleResetCode}
+                title="Reset code template"
+                className="neo-btn bg-white hover:bg-neutral-100 p-1 text-xs flex items-center gap-1 cursor-pointer border-2 border-black shadow-[1.5px_1.5px_0px_#000]"
+              >
+                <RotateCcw className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span className="hidden xl:inline font-bold text-[11px]">Reset</span>
+              </button>
             </div>
 
             {/* Editor Quick Tools */}
@@ -1222,7 +1119,7 @@ export default function DevnixStudio() {
               <button
                 onClick={() => setShowMinimap(!showMinimap)}
                 title={showMinimap ? "Hide Minimap" : "Show Minimap"}
-                className={`neo-btn p-1 text-xs flex items-center gap-1 ${
+                className={`neo-btn p-1 text-xs flex items-center gap-1 border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer ${
                   showMinimap ? "bg-[#ffe600]" : "bg-white"
                 }`}
               >
@@ -1237,24 +1134,24 @@ export default function DevnixStudio() {
               <button
                 onClick={handleFormatCode}
                 title="Format Code"
-                className="neo-btn bg-white hover:bg-neutral-100 p-1 text-xs flex items-center gap-1"
+                className="neo-btn bg-white hover:bg-neutral-100 p-1 text-xs flex items-center gap-1 border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer"
               >
                 <AlignLeft className="w-3 h-3 stroke-[2.5]" />
                 <span className="text-[10px] font-bold hidden sm:inline">Format</span>
               </button>
 
-              <div className="flex items-center gap-1 bg-white border border-black px-1.5 py-0.5 rounded text-[11px] font-bold shadow-[1.5px_1.5px_0px_#000]">
+              <div className="flex items-center gap-1 bg-white border-2 border-black px-1.5 py-0.5 rounded text-[11px] font-bold shadow-[1.5px_1.5px_0px_#000]">
                 <span className="text-[9px] text-neutral-500 font-black">SIZE:</span>
                 <button
                   onClick={() => setFontSize(Math.max(12, fontSize - 1))}
-                  className="hover:text-[#ff5277] px-0.5 font-mono font-black"
+                  className="hover:text-[#ff5277] px-0.5 font-mono font-black cursor-pointer"
                 >
                   -
                 </button>
                 <span className="font-mono text-[11px]">{fontSize}</span>
                 <button
                   onClick={() => setFontSize(Math.min(24, fontSize + 1))}
-                  className="hover:text-[#ff5277] px-0.5 font-mono font-black"
+                  className="hover:text-[#ff5277] px-0.5 font-mono font-black cursor-pointer"
                 >
                   +
                 </button>
@@ -1263,7 +1160,7 @@ export default function DevnixStudio() {
               <button
                 onClick={handleCopyCode}
                 title="Copy code"
-                className="neo-btn bg-white hover:bg-neutral-100 p-1 text-xs flex items-center gap-1"
+                className="neo-btn bg-white hover:bg-neutral-100 p-1 text-xs flex items-center gap-1 border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer"
               >
                 {copiedCode ? (
                   <Check className="w-3 h-3 text-green-600 stroke-[3]" />
@@ -1278,7 +1175,7 @@ export default function DevnixStudio() {
               <button
                 onClick={() => setCode("")}
                 title="Clear code"
-                className="neo-btn bg-white hover:bg-red-50 p-1 text-xs flex items-center gap-1 text-red-600"
+                className="neo-btn bg-white hover:bg-red-50 p-1 text-xs flex items-center gap-1 text-red-600 border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer"
               >
                 <Trash2 className="w-3 h-3 stroke-[2.5]" />
               </button>
@@ -1332,28 +1229,49 @@ export default function DevnixStudio() {
         {/* RIGHT COLUMN: CLEAN, SLEEK, MINIMALIST CONSOLE & TERMINAL (5 Columns)     */}
         {/* ========================================================================= */}
         <div className="lg:col-span-5 flex flex-col neo-box overflow-hidden bg-[#ffffff] border-[2.5px] border-black shadow-[3.5px_3.5px_0px_0px_#000] h-full min-h-0">
-          {/* Minimalist Top Bar */}
-          <div className="shrink-0 bg-[#f0ede6] border-b-[2px] border-black p-2 px-3 flex items-center justify-between gap-2">
-            {/* Left: Terminal Tab / Label */}
-            <div className="flex items-center gap-2">
-              <div className="flex gap-1.5 mr-1">
+          {/* Terminal Header Bar with Integrated Mode Switcher and Primary RUN Button */}
+          <div className="shrink-0 bg-[#f0ede6] border-b-[2.5px] border-black p-2 px-3 flex items-center justify-between gap-2 flex-wrap">
+            {/* Left: Terminal Tab & Execution Mode Switcher */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex gap-1.5 mr-0.5">
                 <div className="w-2.5 h-2.5 rounded-full border border-black bg-[#ff5277]" />
                 <div className="w-2.5 h-2.5 rounded-full border border-black bg-[#ffe600]" />
                 <div className="w-2.5 h-2.5 rounded-full border border-black bg-[#22c55e]" />
               </div>
-              <div className="flex items-center gap-1 text-xs font-mono font-bold text-black">
-                <Terminal className="w-3.5 h-3.5 text-neutral-700" />
-                <span>{executionMode === "interactive" ? "Terminal" : "Console Output"}</span>
-              </div>
-            </div>
 
-            {/* Right: Controls & Tabs */}
-            <div className="flex items-center gap-1.5">
+              {/* Execution Mode Switcher */}
+              <div className="flex items-center bg-white border-2 border-black p-0.5 rounded-lg shadow-[1.5px_1.5px_0px_#000]">
+                <button
+                  onClick={() => handleModeChange("interactive")}
+                  className={`px-2.5 py-1 text-[11px] font-black rounded-md transition-all flex items-center gap-1 cursor-pointer ${
+                    executionMode === "interactive"
+                      ? "bg-[#22c55e] text-black shadow-[1px_1px_0px_#000]"
+                      : "text-neutral-600 hover:text-black"
+                  }`}
+                >
+                  <Radio className="w-3 h-3" />
+                  <span>Real-Time</span>
+                </button>
+
+                <button
+                  onClick={() => handleModeChange("batch")}
+                  className={`px-2.5 py-1 text-[11px] font-black rounded-md transition-all flex items-center gap-1 cursor-pointer ${
+                    executionMode === "batch"
+                      ? "bg-[#00f0ff] text-black shadow-[1px_1px_0px_#000]"
+                      : "text-neutral-600 hover:text-black"
+                  }`}
+                >
+                  <Layers className="w-3 h-3" />
+                  <span>Batch</span>
+                </button>
+              </div>
+
+              {/* Batch Mode Tabs (Output / Stdin) */}
               {executionMode === "batch" && (
-                <div className="flex items-center gap-1 bg-neutral-200/60 p-0.5 rounded border border-black/30 text-[10px] font-bold mr-1">
+                <div className="flex items-center gap-0.5 bg-neutral-200/80 p-0.5 rounded border border-black text-[10px] font-bold">
                   <button
                     onClick={() => setActiveTab("output")}
-                    className={`px-2 py-0.5 rounded transition-all ${
+                    className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
                       activeTab === "output"
                         ? "bg-white text-black shadow-[1px_1px_0px_#000] font-black"
                         : "text-neutral-600 hover:text-black"
@@ -1363,7 +1281,7 @@ export default function DevnixStudio() {
                   </button>
                   <button
                     onClick={() => setActiveTab("stdin")}
-                    className={`px-2 py-0.5 rounded transition-all ${
+                    className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
                       activeTab === "stdin"
                         ? "bg-[#ffe600] text-black shadow-[1px_1px_0px_#000] font-black"
                         : "text-neutral-600 hover:text-black"
@@ -1373,9 +1291,12 @@ export default function DevnixStudio() {
                   </button>
                 </div>
               )}
+            </div>
 
+            {/* Right: Quick Terminal Actions & Primary RUN CODE Button */}
+            <div className="flex items-center gap-1.5">
               {isProcessRunning && (
-                <span className="flex items-center gap-1 text-[10px] font-mono text-emerald-600 font-bold bg-emerald-50 border border-emerald-500 px-1.5 py-0.5 rounded mr-1">
+                <span className="flex items-center gap-1 text-[10px] font-mono text-emerald-700 font-black bg-emerald-100 border border-emerald-500 px-1.5 py-0.5 rounded shadow-[1px_1px_0px_#000]">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
                   Running
                 </span>
@@ -1384,12 +1305,12 @@ export default function DevnixStudio() {
               <button
                 onClick={handleCopyOutput}
                 title="Copy output"
-                className="neo-btn bg-white hover:bg-neutral-100 p-1 text-xs text-neutral-700"
+                className="neo-btn bg-white hover:bg-neutral-100 p-1.5 text-xs text-neutral-700 border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer"
               >
                 {copiedOutput ? (
-                  <Check className="w-3 h-3 text-green-600" />
+                  <Check className="w-3.5 h-3.5 text-green-600 stroke-[3]" />
                 ) : (
-                  <Copy className="w-3 h-3" />
+                  <Copy className="w-3.5 h-3.5" />
                 )}
               </button>
 
@@ -1399,10 +1320,37 @@ export default function DevnixStudio() {
                   setTerminalLogs([]);
                 }}
                 title="Clear console"
-                className="neo-btn bg-white hover:bg-red-50 text-neutral-600 hover:text-red-600 p-1 text-xs"
+                className="neo-btn bg-white hover:bg-red-50 text-neutral-700 hover:text-red-600 p-1.5 text-xs border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer"
               >
-                <Trash2 className="w-3 h-3" />
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
+
+              {/* Primary Run / Stop Action docked in Terminal Header */}
+              {isProcessRunning ? (
+                <button
+                  onClick={handleStopProcess}
+                  className="neo-btn bg-[#ff5277] text-white hover:bg-red-600 px-3.5 py-1 text-xs font-black flex items-center gap-1 border-2 border-black shadow-[2px_2px_0px_#000] cursor-pointer"
+                >
+                  <Square className="w-3.5 h-3.5 fill-white stroke-[2]" />
+                  <span>STOP</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleRun}
+                  disabled={isLoading}
+                  className="neo-btn bg-[#ffe600] text-black hover:bg-[#ffde59] px-3.5 py-1 text-xs font-black flex items-center gap-1.5 border-2 border-black shadow-[2px_2px_0px_#000] cursor-pointer disabled:opacity-50"
+                >
+                  <Play
+                    className={`w-3.5 h-3.5 stroke-[3] fill-black ${
+                      isLoading ? "animate-spin" : ""
+                    }`}
+                  />
+                  <span>{isLoading ? "RUNNING..." : "RUN"}</span>
+                  <kbd className="hidden xl:inline-block bg-black text-white text-[8px] font-mono px-1 py-0.2 rounded border border-black">
+                    Ctrl+Enter
+                  </kbd>
+                </button>
+              )}
             </div>
           </div>
 

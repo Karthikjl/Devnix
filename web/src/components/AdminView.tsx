@@ -744,31 +744,31 @@ export function AdminView({ currentUser, onBack, onImpersonateSuccess, showToast
       {resetTargetUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="w-full max-w-md bg-white border-[3px] border-black rounded-2xl shadow-[6px_6px_0px_#000] overflow-hidden flex flex-col">
-            <div className="bg-[#ff5277] text-white border-b-2 border-black p-4 flex items-center justify-between">
-              <h3 className="font-black text-sm uppercase">
+            <div className="bg-[#ffe600] text-black border-b-2 border-black p-4 flex items-center justify-between">
+              <h3 className="font-black text-sm uppercase text-black">
                 Reset Password for @{resetTargetUser.username}
               </h3>
               <button
                 onClick={() => setResetTargetUser(null)}
-                className="p-1 rounded border border-black bg-white text-black"
+                className="p-1 rounded border-2 border-black bg-white text-black hover:bg-neutral-100 cursor-pointer shadow-[1.5px_1.5px_0px_#000]"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-3.5 h-3.5 stroke-[2.5]" />
               </button>
             </div>
 
             <form onSubmit={handleSetTempPassword} className="p-5 flex flex-col gap-3">
-              <p className="text-xs text-neutral-600">
+              <p className="text-xs font-bold text-neutral-600">
                 Setting a temporary password will require the user to change their password upon their next login.
               </p>
               <div>
-                <label className="block text-xs font-bold mb-1">New Temporary Password</label>
+                <label className="block text-xs font-black text-black mb-1">New Temporary Password</label>
                 <input
                   type="password"
                   required
                   value={tempPassword}
                   onChange={(e) => setTempPassword(e.target.value)}
                   placeholder="Enter temporary password"
-                  className="w-full p-2 text-xs font-bold border-2 border-black rounded-lg outline-none"
+                  className="w-full p-2 text-xs font-bold text-black border-2 border-black rounded-lg outline-none shadow-[2px_2px_0px_#000] focus:shadow-[3px_3px_0px_#00f0ff]"
                 />
               </div>
 
@@ -776,14 +776,14 @@ export function AdminView({ currentUser, onBack, onImpersonateSuccess, showToast
                 <button
                   type="button"
                   onClick={() => setResetTargetUser(null)}
-                  className="neo-btn bg-white px-3 py-1.5 text-xs font-bold"
+                  className="neo-btn bg-white hover:bg-neutral-100 text-black px-3.5 py-1.5 text-xs font-black border-2 border-black shadow-[2px_2px_0px_#000] cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSettingPassword}
-                  className="neo-btn bg-[#ff5277] text-white px-4 py-1.5 text-xs font-black"
+                  className="neo-btn bg-[#ffe600] text-black hover:bg-[#ffd500] px-4 py-1.5 text-xs font-black border-2 border-black shadow-[2px_2px_0px_#000] cursor-pointer disabled:opacity-50"
                 >
                   {isSettingPassword ? "Saving..." : "Set Password"}
                 </button>

@@ -28,16 +28,16 @@ import {
   Send,
   Radio,
   Layers,
-  Sparkles
+  Zap,
 } from "lucide-react";
 
-// Dynamically import Monaco Editor to ensure SSR safety
+// Dynamically import Monaco Editor
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
   loading: () => (
-    <div className="flex-1 flex items-center justify-center bg-[#1e1e1e] text-[#ffe600] font-mono text-sm">
+    <div className="flex-1 flex items-center justify-center bg-[#1e1e1e] text-[#ffe600] font-mono text-xs">
       <div className="flex items-center gap-2">
-        <span className="w-3 h-3 rounded-full bg-[#ffe600] animate-ping" />
+        <span className="w-2.5 h-2.5 rounded-full bg-[#ffe600] animate-ping" />
         <span>Loading VS Code Editor...</span>
       </div>
     </div>
@@ -87,7 +87,7 @@ export default function DevnixStudio() {
   const [isProcessRunning, setIsProcessRunning] = useState<boolean>(false);
   const [result, setResult] = useState<ExecutionResult | null>(null);
   
-  // Real-time terminal output stream & interactive input
+  // Real-time terminal state
   const [terminalLogs, setTerminalLogs] = useState<Array<{ type: "stdout" | "stderr" | "status" | "input" | "exit"; text: string }>>([]);
   const [realtimeInput, setRealtimeInput] = useState<string>("");
   const [currentSessionId, setCurrentSessionId] = useState<string>("");
@@ -100,18 +100,17 @@ export default function DevnixStudio() {
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const realtimeInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-scroll terminal to bottom when new logs arrive
+  // Auto-scroll terminal
   useEffect(() => {
     if (terminalEndRef.current) {
       terminalEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [terminalLogs]);
 
-  // Setup Monaco themes and shortcuts on mount
+  // Setup Monaco themes
   const handleEditorWillMount = (monaco: any) => {
     monacoRef.current = monaco;
 
-    // Define Custom Cyberpunk Theme
     monaco.editor.defineTheme("devnix-cyberpunk", {
       base: "vs-dark",
       inherit: true,
@@ -134,7 +133,6 @@ export default function DevnixStudio() {
       },
     });
 
-    // Define Monokai Pro Theme
     monaco.editor.defineTheme("devnix-monokai", {
       base: "vs-dark",
       inherit: true,
@@ -155,7 +153,6 @@ export default function DevnixStudio() {
       },
     });
 
-    // Define Nord Theme
     monaco.editor.defineTheme("devnix-nord", {
       base: "vs-dark",
       inherit: true,
@@ -179,14 +176,11 @@ export default function DevnixStudio() {
 
   const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
-
-    // Register Ctrl+Enter / Cmd+Enter shortcut
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       handleRun();
     });
   };
 
-  // Update code boilerplate when language changes
   const handleLanguageChange = (langId: number) => {
     const lang = SUPPORTED_LANGUAGES.find((l) => l.id === langId);
     if (lang) {
@@ -197,26 +191,22 @@ export default function DevnixStudio() {
     }
   };
 
-  // Reset current template
   const handleResetCode = () => {
     setCode(selectedLanguage.defaultCode);
   };
 
-  // Format code in Monaco
   const handleFormatCode = () => {
     if (editorRef.current) {
       editorRef.current.getAction("editor.action.formatDocument")?.run();
     }
   };
 
-  // Copy code to clipboard
   const handleCopyCode = () => {
     navigator.clipboard.writeText(code);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  // Copy output to clipboard
   const handleCopyOutput = () => {
     if (executionMode === "interactive") {
       const allText = terminalLogs.map((l) => l.text).join("");
@@ -232,7 +222,6 @@ export default function DevnixStudio() {
     setTimeout(() => setCopiedOutput(false), 2000);
   };
 
-  // Primary Run Dispatcher
   const handleRun = () => {
     if (executionMode === "interactive") {
       runInteractiveStreaming();
@@ -241,7 +230,7 @@ export default function DevnixStudio() {
     }
   };
 
-  // 1. RUN IN REAL-TIME INTERACTIVE STREAMING MODE
+  // 1. Interactive Streaming Mode
   const runInteractiveStreaming = async () => {
     if (isProcessRunning) return;
 
@@ -251,7 +240,7 @@ export default function DevnixStudio() {
     setIsLoading(true);
     setActiveTab("output");
     setTerminalLogs([
-      { type: "status", text: `⚡ Initializing ${selectedLanguage.label} in Real-Time Interactive Terminal...\n` },
+      { type: "status", text: `⚡ [DEVNIX TTY] Initializing ${selectedLanguage.label} runtime session...\n` },
     ]);
 
     const codeToRun = editorRef.current ? editorRef.current.getValue() : code;
@@ -277,7 +266,6 @@ export default function DevnixStudio() {
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
 
-      // Focus real-time input prompt
       setTimeout(() => {
         realtimeInputRef.current?.focus();
       }, 100);
@@ -313,7 +301,6 @@ export default function DevnixStudio() {
     }
   };
 
-  // Send real-time input to running process
   const handleSendRealtimeInput = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!realtimeInput || !isProcessRunning || !currentSessionId) return;
@@ -321,7 +308,6 @@ export default function DevnixStudio() {
     const inputToSend = realtimeInput;
     setRealtimeInput("");
 
-    // Show input in terminal
     setTerminalLogs((prev) => [
       ...prev,
       { type: "input", text: `${inputToSend}\n` },
@@ -344,7 +330,6 @@ export default function DevnixStudio() {
     }
   };
 
-  // Stop running interactive process
   const handleStopProcess = async () => {
     if (!currentSessionId) return;
     try {
@@ -356,12 +341,12 @@ export default function DevnixStudio() {
       setIsProcessRunning(false);
       setTerminalLogs((prev) => [
         ...prev,
-        { type: "status", text: `\n[Process stopped by user]\n` },
+        { type: "status", text: `\n[Process terminated by user]\n` },
       ]);
     } catch {}
   };
 
-  // 2. RUN IN BATCH STDIN MODE
+  // 2. Batch Mode
   const runBatchCode = async () => {
     if (isLoading) return;
     setIsLoading(true);
@@ -395,83 +380,41 @@ export default function DevnixStudio() {
     }
   };
 
-  // Status color helper for Neobrutalist badges
-  const getStatusBadge = () => {
-    if (executionMode === "interactive") {
-      if (isProcessRunning) {
-        return (
-          <span className="bg-[#22c55e] text-black border-2 border-black px-2.5 py-0.5 rounded text-xs font-black animate-pulse shadow-[2px_2px_0px_#000] flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-black animate-ping" />
-            LIVE STREAMING
-          </span>
-        );
-      }
-      return (
-        <span className="bg-[#ffe600] text-black border-2 border-black px-2.5 py-0.5 rounded text-xs font-black shadow-[2px_2px_0px_#000]">
-          TERMINAL IDLE
-        </span>
-      );
-    }
-
-    if (!result || !result.status) return null;
-    const statusId = result.status.id;
-
-    if (statusId === 3) {
-      return (
-        <span className="bg-[#4ade80] text-black border-2 border-black px-2.5 py-0.5 rounded text-xs font-black shadow-[2px_2px_0px_#000]">
-          ✓ {result.status.description.toUpperCase()}
-        </span>
-      );
-    } else if (statusId === 2 || statusId === 1) {
-      return (
-        <span className="bg-[#ffe600] text-black border-2 border-black px-2.5 py-0.5 rounded text-xs font-black animate-pulse shadow-[2px_2px_0px_#000]">
-          ⏳ {result.status.description.toUpperCase()}
-        </span>
-      );
-    } else {
-      return (
-        <span className="bg-[#ff5277] text-white border-2 border-black px-2.5 py-0.5 rounded text-xs font-black shadow-[2px_2px_0px_#000]">
-          ✕ {result.status.description.toUpperCase()}
-        </span>
-      );
-    }
-  };
-
   return (
-    <div className="min-h-screen flex flex-col p-3 md:p-6 max-w-[1600px] mx-auto gap-4">
-      {/* ⚡ HEADER BAR */}
-      <header className="neo-box-lg bg-white p-3 md:p-4 flex flex-wrap items-center justify-between gap-4">
+    <div className="h-screen max-h-screen flex flex-col p-2 md:p-3 max-w-[1720px] mx-auto gap-2.5 overflow-hidden">
+      {/* ⚡ HEADER BAR (Fixed Height) */}
+      <header className="shrink-0 neo-box-lg bg-white p-2.5 px-3 md:px-4 flex flex-wrap items-center justify-between gap-3">
         {/* Brand Logo & Product Name */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <img
             src="/logo.png"
             alt="Devnix Logo"
-            className="w-11 h-11 object-contain rounded-lg border-2 border-black shadow-[3px_3px_0px_#000] bg-[#fffdfa]"
+            className="w-9 h-9 md:w-10 md:h-10 object-contain rounded-lg border-2 border-black shadow-[2px_2px_0px_#000] bg-[#fffdfa]"
           />
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl md:text-3xl font-black tracking-tight text-black">
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-xl md:text-2xl font-black tracking-tight text-black leading-none">
                 DEVNIX
               </h1>
-              <span className="bg-[#ff5277] text-white border-2 border-black text-[10px] font-black uppercase px-2 py-0.5 rounded-full shadow-[2px_2px_0px_#000]">
+              <span className="bg-[#ff5277] text-white border-[1.5px] border-black text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full shadow-[1.5px_1.5px_0px_#000]">
                 STUDIO ⚡
               </span>
             </div>
-            <p className="text-xs font-bold text-neutral-600 hidden sm:block">
+            <p className="text-[10px] font-bold text-neutral-500 hidden sm:block leading-tight mt-0.5">
               Neobrutalist Online Code Engine & Live Terminal
             </p>
           </div>
         </div>
 
-        {/* Center: Language Selector, Theme, Mode Toggle */}
+        {/* Center: Mode Switcher, Language & Theme Controls */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Execution Mode Toggle: Interactive vs Batch */}
+          {/* Execution Mode Switcher */}
           <div className="flex items-center bg-[#f0ede6] border-2 border-black p-0.5 rounded-md shadow-[2px_2px_0px_#000]">
             <button
               onClick={() => setExecutionMode("interactive")}
-              className={`px-2.5 py-1 text-xs font-bold rounded transition-all flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 text-xs font-black rounded transition-all flex items-center gap-1.5 ${
                 executionMode === "interactive"
-                  ? "bg-[#22c55e] text-black font-black shadow-[1px_1px_0px_#000]"
+                  ? "bg-[#22c55e] text-black border border-black shadow-[1px_1px_0px_#000]"
                   : "text-neutral-600 hover:text-black"
               }`}
             >
@@ -481,9 +424,9 @@ export default function DevnixStudio() {
 
             <button
               onClick={() => setExecutionMode("batch")}
-              className={`px-2.5 py-1 text-xs font-bold rounded transition-all flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 text-xs font-black rounded transition-all flex items-center gap-1.5 ${
                 executionMode === "batch"
-                  ? "bg-[#00f0ff] text-black font-black shadow-[1px_1px_0px_#000]"
+                  ? "bg-[#00f0ff] text-black border border-black shadow-[1px_1px_0px_#000]"
                   : "text-neutral-600 hover:text-black"
               }`}
             >
@@ -497,7 +440,7 @@ export default function DevnixStudio() {
             <select
               value={selectedLanguage.id}
               onChange={(e) => handleLanguageChange(Number(e.target.value))}
-              className="neo-select text-sm py-2 px-3 pr-8 appearance-none bg-white cursor-pointer hover:bg-neutral-50"
+              className="neo-select text-xs py-1.5 px-2.5 pr-7 appearance-none bg-white cursor-pointer hover:bg-neutral-50 font-bold"
             >
               {SUPPORTED_LANGUAGES.map((lang) => (
                 <option key={lang.id} value={lang.id}>
@@ -505,16 +448,16 @@ export default function DevnixStudio() {
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-4 h-4 absolute right-2.5 pointer-events-none stroke-[2.5]" />
+            <ChevronDown className="w-3.5 h-3.5 absolute right-2 pointer-events-none stroke-[2.5]" />
           </div>
 
           {/* VS Code Theme Selector */}
           <div className="relative flex items-center">
-            <Palette className="w-4 h-4 absolute left-2.5 pointer-events-none stroke-[2.5] text-neutral-600" />
+            <Palette className="w-3.5 h-3.5 absolute left-2 pointer-events-none stroke-[2.5] text-neutral-600" />
             <select
               value={currentTheme}
               onChange={(e) => setCurrentTheme(e.target.value)}
-              className="neo-select text-xs py-2 pl-8 pr-8 appearance-none bg-white cursor-pointer hover:bg-neutral-50 font-bold"
+              className="neo-select text-xs py-1.5 pl-7 pr-7 appearance-none bg-white cursor-pointer hover:bg-neutral-50 font-bold"
             >
               {THEMES.map((theme) => (
                 <option key={theme.id} value={theme.id}>
@@ -522,43 +465,43 @@ export default function DevnixStudio() {
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-4 h-4 absolute right-2.5 pointer-events-none stroke-[2.5]" />
+            <ChevronDown className="w-3.5 h-3.5 absolute right-2 pointer-events-none stroke-[2.5]" />
           </div>
 
           {/* Reset Template */}
           <button
             onClick={handleResetCode}
             title="Reset code template"
-            className="neo-btn bg-white hover:bg-neutral-100 p-2 text-xs flex items-center gap-1.5"
+            className="neo-btn bg-white hover:bg-neutral-100 p-1.5 text-xs flex items-center gap-1"
           >
-            <RotateCcw className="w-4 h-4 stroke-[2.5]" />
-            <span className="hidden sm:inline font-bold">Reset</span>
+            <RotateCcw className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span className="hidden sm:inline font-bold text-[11px]">Reset</span>
           </button>
         </div>
 
-        {/* Right: Primary Run / Stop Buttons */}
+        {/* Right: Primary Run / Stop Action */}
         <div className="flex items-center gap-2">
           {isProcessRunning ? (
             <button
               onClick={handleStopProcess}
-              className="neo-btn bg-[#ff5277] text-white hover:bg-red-600 px-5 py-2.5 text-sm md:text-base font-black flex items-center gap-2 shadow-[4px_4px_0px_#000]"
+              className="neo-btn bg-[#ff5277] text-white hover:bg-red-600 px-4 py-2 text-xs md:text-sm font-black flex items-center gap-1.5 shadow-[3px_3px_0px_#000]"
             >
-              <Square className="w-4 h-4 fill-white stroke-[2]" />
+              <Square className="w-3.5 h-3.5 fill-white stroke-[2]" />
               <span>STOP PROCESS</span>
             </button>
           ) : (
             <button
               onClick={handleRun}
               disabled={isLoading}
-              className="neo-btn bg-[#ffe600] hover:bg-[#ffde59] px-5 py-2.5 text-sm md:text-base font-black flex items-center gap-2 shadow-[4px_4px_0px_#000]"
+              className="neo-btn bg-[#ffe600] hover:bg-[#ffde59] px-5 py-2 text-xs md:text-sm font-black flex items-center gap-1.5 shadow-[3px_3px_0px_#000]"
             >
               <Play
-                className={`w-4 h-4 stroke-[3] fill-black ${
+                className={`w-3.5 h-3.5 stroke-[3] fill-black ${
                   isLoading ? "animate-spin" : ""
                 }`}
               />
               <span>{isLoading ? "LAUNCHING..." : "RUN CODE"}</span>
-              <kbd className="hidden lg:inline-block bg-black text-white text-[10px] font-mono px-1.5 py-0.5 rounded border border-black ml-1">
+              <kbd className="hidden lg:inline-block bg-black text-white text-[9px] font-mono px-1 py-0.5 rounded border border-black ml-1">
                 Ctrl+Enter
               </kbd>
             </button>
@@ -566,104 +509,99 @@ export default function DevnixStudio() {
         </div>
       </header>
 
-      {/* 🚀 MAIN SPLIT WORKSPACE: LEFT (VS CODE EDITOR) & RIGHT (OUTPUT) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 items-stretch">
+      {/* 🚀 MAIN SPLIT WORKSPACE: Fills 100% of remaining screen height */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-0 overflow-hidden">
         {/* ========================================================================= */}
-        {/* LEFT COLUMN: MONACO / VS CODE EDITOR (7 Columns on large screens)         */}
+        {/* LEFT COLUMN: MONACO / VS CODE EDITOR (7 Columns)                          */}
         {/* ========================================================================= */}
-        <div className="lg:col-span-7 flex flex-col neo-box overflow-hidden bg-[#ffffff]">
+        <div className="lg:col-span-7 flex flex-col neo-box overflow-hidden bg-[#ffffff] h-full min-h-0">
           {/* Editor Header Bar */}
-          <div className="bg-[#f0ede6] border-b-[3px] border-black p-2.5 px-4 flex items-center justify-between gap-2 flex-wrap">
+          <div className="shrink-0 bg-[#f0ede6] border-b-[2.5px] border-black p-2 px-3 flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2">
-              <div className="flex gap-1.5 mr-2">
-                <div className="w-3 h-3 rounded-full border-[1.5px] border-black bg-[#ff5277]" />
-                <div className="w-3 h-3 rounded-full border-[1.5px] border-black bg-[#ffe600]" />
-                <div className="w-3 h-3 rounded-full border-[1.5px] border-black bg-[#4ade80]" />
+              <div className="flex gap-1.5 mr-1">
+                <div className="w-2.5 h-2.5 rounded-full border border-black bg-[#ff5277]" />
+                <div className="w-2.5 h-2.5 rounded-full border border-black bg-[#ffe600]" />
+                <div className="w-2.5 h-2.5 rounded-full border border-black bg-[#4ade80]" />
               </div>
-              <div className="bg-white border-2 border-black px-2.5 py-0.5 rounded text-xs font-mono font-bold shadow-[2px_2px_0px_#000] flex items-center gap-1.5">
-                <FileCode2 className="w-3.5 h-3.5 text-black" />
+              <div className="bg-white border-[1.5px] border-black px-2 py-0.5 rounded text-xs font-mono font-bold shadow-[1.5px_1.5px_0px_#000] flex items-center gap-1">
+                <FileCode2 className="w-3 h-3 text-black" />
                 <span>main.{selectedLanguage.extension}</span>
               </div>
-              <span className="text-[10px] font-bold uppercase px-2 py-0.5 bg-[#00f0ff] border border-black rounded shadow-[1px_1px_0px_#000]">
-                VS CODE ENGINE
+              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 bg-[#00f0ff] border border-black rounded shadow-[1px_1px_0px_#000]">
+                VS CODE
               </span>
             </div>
 
-            {/* Quick Editor Actions */}
-            <div className="flex items-center gap-2">
-              {/* Minimap Toggle */}
+            {/* Editor Quick Tools */}
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setShowMinimap(!showMinimap)}
                 title={showMinimap ? "Hide Minimap" : "Show Minimap"}
-                className={`neo-btn p-1.5 text-xs flex items-center gap-1 ${
+                className={`neo-btn p-1 text-xs flex items-center gap-1 ${
                   showMinimap ? "bg-[#ffe600]" : "bg-white"
                 }`}
               >
                 {showMinimap ? (
-                  <Eye className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <Eye className="w-3 h-3 stroke-[2.5]" />
                 ) : (
-                  <EyeOff className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <EyeOff className="w-3 h-3 stroke-[2.5]" />
                 )}
                 <span className="text-[10px] font-bold hidden xl:inline">Map</span>
               </button>
 
-              {/* Format Code */}
               <button
                 onClick={handleFormatCode}
                 title="Format Code"
-                className="neo-btn bg-white hover:bg-neutral-100 p-1.5 text-xs flex items-center gap-1"
+                className="neo-btn bg-white hover:bg-neutral-100 p-1 text-xs flex items-center gap-1"
               >
-                <AlignLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                <AlignLeft className="w-3 h-3 stroke-[2.5]" />
                 <span className="text-[10px] font-bold hidden sm:inline">Format</span>
               </button>
 
-              {/* Font Size Selector */}
-              <div className="flex items-center gap-1 bg-white border-2 border-black px-2 py-0.5 rounded text-xs font-bold shadow-[2px_2px_0px_#000]">
-                <span className="text-[10px] text-neutral-500">SIZE:</span>
+              <div className="flex items-center gap-1 bg-white border border-black px-1.5 py-0.5 rounded text-[11px] font-bold shadow-[1.5px_1.5px_0px_#000]">
+                <span className="text-[9px] text-neutral-500 font-black">SIZE:</span>
                 <button
                   onClick={() => setFontSize(Math.max(12, fontSize - 1))}
-                  className="hover:text-[#ff5277] px-1 font-mono font-black"
+                  className="hover:text-[#ff5277] px-0.5 font-mono font-black"
                 >
                   -
                 </button>
-                <span className="font-mono text-xs">{fontSize}</span>
+                <span className="font-mono text-[11px]">{fontSize}</span>
                 <button
                   onClick={() => setFontSize(Math.min(24, fontSize + 1))}
-                  className="hover:text-[#ff5277] px-1 font-mono font-black"
+                  className="hover:text-[#ff5277] px-0.5 font-mono font-black"
                 >
                   +
                 </button>
               </div>
 
-              {/* Copy Code */}
               <button
                 onClick={handleCopyCode}
                 title="Copy code"
-                className="neo-btn bg-white hover:bg-neutral-100 p-1.5 text-xs flex items-center gap-1"
+                className="neo-btn bg-white hover:bg-neutral-100 p-1 text-xs flex items-center gap-1"
               >
                 {copiedCode ? (
-                  <Check className="w-3.5 h-3.5 text-green-600 stroke-[3]" />
+                  <Check className="w-3 h-3 text-green-600 stroke-[3]" />
                 ) : (
-                  <Copy className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <Copy className="w-3 h-3 stroke-[2.5]" />
                 )}
-                <span className="text-[11px] font-bold hidden sm:inline">
-                  {copiedCode ? "Copied!" : "Copy"}
+                <span className="text-[10px] font-bold hidden sm:inline">
+                  {copiedCode ? "Copied" : "Copy"}
                 </span>
               </button>
 
-              {/* Clear Code */}
               <button
                 onClick={() => setCode("")}
                 title="Clear code"
-                className="neo-btn bg-white hover:bg-red-50 p-1.5 text-xs flex items-center gap-1 text-red-600"
+                className="neo-btn bg-white hover:bg-red-50 p-1 text-xs flex items-center gap-1 text-red-600"
               >
-                <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
+                <Trash2 className="w-3 h-3 stroke-[2.5]" />
               </button>
             </div>
           </div>
 
-          {/* Monaco / VS Code Editor Container */}
-          <div className="flex-1 min-h-[480px] lg:min-h-[590px] relative">
+          {/* Monaco Editor Canvas (Fills exactly available height) */}
+          <div className="flex-1 min-h-0 relative h-full">
             <MonacoEditor
               height="100%"
               language={selectedLanguage.monacoLang}
@@ -687,177 +625,166 @@ export default function DevnixStudio() {
                 formatOnPaste: true,
                 tabSize: 4,
                 lineNumbersMinChars: 3,
-                padding: { top: 12, bottom: 12 },
+                padding: { top: 8, bottom: 8 },
               }}
             />
           </div>
 
-          {/* Editor Footer / Status Bar */}
-          <div className="bg-[#f0ede6] border-t-[2.5px] border-black px-4 py-1.5 flex items-center justify-between text-xs font-bold font-mono text-neutral-700">
-            <div className="flex items-center gap-4">
+          {/* Editor Footer Status */}
+          <div className="shrink-0 bg-[#f0ede6] border-t-[2px] border-black px-3 py-1 flex items-center justify-between text-[11px] font-bold font-mono text-neutral-700">
+            <div className="flex items-center gap-3">
               <span>LANG: {selectedLanguage.label.toUpperCase()}</span>
-              <span>MODE: {executionMode.toUpperCase()}</span>
+              <span>THEME: {currentTheme.toUpperCase()}</span>
             </div>
-            <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-neutral-500">
-              <Keyboard className="w-3.5 h-3.5" />
-              <span>VS Code Monaco Engine (Ctrl+Enter to run)</span>
+            <div className="hidden sm:flex items-center gap-1 text-[10px] text-neutral-500">
+              <Keyboard className="w-3 h-3" />
+              <span>Ctrl+Enter to Execute</span>
             </div>
           </div>
         </div>
 
         {/* ========================================================================= */}
-        {/* RIGHT COLUMN: OUTPUT & CONSOLE (5 Columns on large screens)               */}
+        {/* RIGHT COLUMN: HIGH-TECH NEOBRUTALIST TERMINAL (5 Columns)                 */}
         {/* ========================================================================= */}
-        <div className="lg:col-span-5 flex flex-col neo-box overflow-hidden bg-white">
-          {/* Output Header Tabs */}
-          <div className="bg-[#f0ede6] border-b-[3px] border-black p-2 px-3 flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setActiveTab("output")}
-                className={`px-3 py-1 text-xs font-black rounded-md border-2 border-black transition-all ${
-                  activeTab === "output"
-                    ? "bg-[#00f0ff] shadow-[2px_2px_0px_#000] -translate-y-0.5"
-                    : "bg-white hover:bg-neutral-100"
-                }`}
-              >
-                <div className="flex items-center gap-1">
-                  <Terminal className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>{executionMode === "interactive" ? "LIVE TERMINAL" : "OUTPUT"}</span>
-                </div>
-              </button>
-
-              {executionMode === "batch" && (
-                <button
-                  onClick={() => setActiveTab("stdin")}
-                  className={`px-3 py-1 text-xs font-black rounded-md border-2 border-black transition-all ${
-                    activeTab === "stdin"
-                      ? "bg-[#ffe600] shadow-[2px_2px_0px_#000] -translate-y-0.5"
-                      : "bg-white hover:bg-neutral-100"
-                  }`}
-                >
-                  <span>INPUT (STDIN)</span>
-                  {stdin.trim().length > 0 && (
-                    <span className="ml-1 w-2 h-2 inline-block rounded-full bg-[#ff5277]" />
-                  )}
-                </button>
-              )}
-
-              <button
-                onClick={() => setActiveTab("info")}
-                className={`px-3 py-1 text-xs font-black rounded-md border-2 border-black transition-all ${
-                  activeTab === "info"
-                    ? "bg-[#c084fc] shadow-[2px_2px_0px_#000] -translate-y-0.5"
-                    : "bg-white hover:bg-neutral-100"
-                }`}
-              >
-                <span>INFO</span>
-              </button>
+        <div className="lg:col-span-5 flex flex-col neo-box overflow-hidden bg-[#0e1117] border-[3px] border-black shadow-[4px_4px_0px_0px_#000] h-full min-h-0">
+          {/* Retro Terminal Header */}
+          <div className="shrink-0 bg-[#181c24] border-b-[2.5px] border-black p-2 px-3 flex items-center justify-between gap-2 flex-wrap">
+            {/* Terminal Window Controls & Title */}
+            <div className="flex items-center gap-2.5">
+              <div className="flex gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full border border-black bg-[#ff5277]" />
+                <div className="w-2.5 h-2.5 rounded-full border border-black bg-[#ffe600]" />
+                <div className="w-2.5 h-2.5 rounded-full border border-black bg-[#22c55e]" />
+              </div>
+              <div className="flex items-center gap-1.5 text-neutral-300 font-mono text-xs font-bold">
+                <Terminal className="w-3.5 h-3.5 text-[#00f0ff]" />
+                <span>devnix@tty1:~</span>
+              </div>
             </div>
 
-            {/* Right Tools in Output Header */}
-            <div className="flex items-center gap-1.5">
-              {activeTab === "output" && (
+            {/* Terminal Status & Controls */}
+            <div className="flex items-center gap-2">
+              {executionMode === "interactive" ? (
+                isProcessRunning ? (
+                  <span className="bg-[#22c55e] text-black border border-black px-2 py-0.5 rounded text-[10px] font-black animate-pulse flex items-center gap-1 shadow-[1px_1px_0px_#000]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-black animate-ping" />
+                    LIVE RUNNING
+                  </span>
+                ) : (
+                  <span className="bg-[#ffe600] text-black border border-black px-2 py-0.5 rounded text-[10px] font-black shadow-[1px_1px_0px_#000]">
+                    READY
+                  </span>
+                )
+              ) : (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setActiveTab("output")}
+                    className={`px-2 py-0.5 rounded text-[10px] font-black border border-black transition-all ${
+                      activeTab === "output"
+                        ? "bg-[#00f0ff] text-black shadow-[1px_1px_0px_#000]"
+                        : "bg-[#252b36] text-neutral-300"
+                    }`}
+                  >
+                    OUTPUT
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("stdin")}
+                    className={`px-2 py-0.5 rounded text-[10px] font-black border border-black transition-all ${
+                      activeTab === "stdin"
+                        ? "bg-[#ffe600] text-black shadow-[1px_1px_0px_#000]"
+                        : "bg-[#252b36] text-neutral-300"
+                    }`}
+                  >
+                    STDIN
+                  </button>
+                </div>
+              )}
+
+              {/* Copy & Clear Console Buttons */}
+              <div className="flex items-center gap-1 border-l border-neutral-700 pl-2">
                 <button
                   onClick={handleCopyOutput}
-                  title="Copy Output"
-                  className="neo-btn bg-white hover:bg-neutral-100 p-1.5 text-xs flex items-center gap-1"
+                  title="Copy Terminal Logs"
+                  className="p-1 text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 rounded"
                 >
                   {copiedOutput ? (
-                    <Check className="w-3.5 h-3.5 text-green-600 stroke-[3]" />
+                    <Check className="w-3 h-3 text-green-400" />
                   ) : (
-                    <Copy className="w-3.5 h-3.5 stroke-[2.5]" />
+                    <Copy className="w-3 h-3" />
                   )}
                 </button>
-              )}
-              <button
-                onClick={() => {
-                  setResult(null);
-                  setTerminalLogs([]);
-                }}
-                title="Clear Output"
-                className="neo-btn bg-white hover:bg-neutral-100 p-1.5 text-xs"
-              >
-                <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
-              </button>
+                <button
+                  onClick={() => {
+                    setResult(null);
+                    setTerminalLogs([]);
+                  }}
+                  title="Clear Console"
+                  className="p-1 text-xs text-neutral-400 hover:text-red-400 hover:bg-neutral-800 rounded"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Output Content Area */}
-          <div className="flex-1 flex flex-col p-4 bg-[#fffdfa] overflow-hidden min-h-[480px] lg:min-h-[590px]">
-            {/* TAB 1: TERMINAL OUTPUT (HANDLES BOTH INTERACTIVE AND BATCH) */}
+          {/* Terminal Screen Body (Scrollable inside, never overflows screen) */}
+          <div className="flex-1 min-h-0 flex flex-col p-2.5 md:p-3 bg-[#0a0d13] text-[#e6edf3] font-mono text-xs md:text-sm overflow-hidden relative">
+            <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/[0.02] via-transparent to-black/[0.1] pointer-events-none" />
+
+            {/* TAB 1: OUTPUT / INTERACTIVE TERMINAL */}
             {activeTab === "output" && (
-              <div className="flex-1 flex flex-col gap-3 h-full">
-                {/* Status & Metrics Bar */}
-                <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b-2 border-black/20">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-neutral-500 uppercase">
-                      STATUS:
-                    </span>
-                    {getStatusBadge() || (
-                      <span className="bg-neutral-200 text-neutral-700 border-2 border-black px-2 py-0.5 rounded text-xs font-bold">
-                        READY TO RUN
-                      </span>
-                    )}
-                  </div>
-
-                  {executionMode === "batch" && result && (result.time || result.memory) && (
-                    <div className="flex items-center gap-2">
-                      {result.time && (
-                        <div className="flex items-center gap-1 bg-white border-2 border-black px-2 py-0.5 rounded text-xs font-mono font-bold shadow-[2px_2px_0px_#000]">
-                          <Clock className="w-3 h-3 text-neutral-600" />
-                          <span>{result.time}s</span>
-                        </div>
-                      )}
-                      {result.memory && (
-                        <div className="flex items-center gap-1 bg-white border-2 border-black px-2 py-0.5 rounded text-xs font-mono font-bold shadow-[2px_2px_0px_#000]">
-                          <Cpu className="w-3 h-3 text-neutral-600" />
-                          <span>{result.memory} KB</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* 1A. REAL-TIME INTERACTIVE TERMINAL VIEW */}
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                {/* 1A. REAL-TIME INTERACTIVE VIEW */}
                 {executionMode === "interactive" ? (
-                  <div className="flex-1 flex flex-col neo-box-sm bg-[#121212] overflow-hidden border-2 border-black">
-                    {/* Live Stream Logs */}
-                    <div className="flex-1 p-3 font-mono text-sm overflow-y-auto whitespace-pre-wrap selection:bg-[#ffe600] selection:text-black">
+                  <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                    {/* Live Stream Screen (Internally scrollable) */}
+                    <div className="flex-1 min-h-0 overflow-y-auto space-y-1 p-1.5 selection:bg-[#ffe600] selection:text-black">
                       {terminalLogs.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-center p-6 text-neutral-500 gap-2">
-                          <Radio className="w-8 h-8 text-[#22c55e] animate-pulse" />
-                          <p className="font-bold text-neutral-300">
-                            Real-Time Interactive Terminal Ready
-                          </p>
-                          <p className="text-xs text-neutral-500 max-w-xs">
-                            Click <strong>RUN CODE</strong> to start live execution. Any inputs requested by your code will be typed directly into the prompt below in real time!
-                          </p>
+                        <div className="h-full flex flex-col items-center justify-center text-center p-4 text-neutral-500 gap-2">
+                          <div className="w-10 h-10 rounded-xl bg-[#161b22] border border-neutral-700 flex items-center justify-center text-[#22c55e] shadow-[2px_2px_0px_#000]">
+                            <Zap className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="font-black text-white text-sm tracking-wide">
+                              Devnix Real-Time Interactive Terminal
+                            </p>
+                            <p className="text-[11px] text-neutral-400 max-w-xs mt-0.5">
+                              Press <strong className="text-[#ffe600]">RUN CODE</strong> or <kbd className="bg-neutral-800 text-white px-1 py-0.5 rounded border border-neutral-600">Ctrl+Enter</kbd> to execute. Type inputs in real time below!
+                            </p>
+                          </div>
                         </div>
                       ) : (
                         terminalLogs.map((log, idx) => {
                           if (log.type === "input") {
                             return (
-                              <span key={idx} className="text-[#00f0ff] font-bold">
-                                {log.text}
-                              </span>
+                              <div key={idx} className="flex items-start gap-1.5 text-[#00f0ff] font-bold text-xs md:text-sm">
+                                <span className="text-[#ffe600]">❯</span>
+                                <span>{log.text}</span>
+                              </div>
                             );
                           } else if (log.type === "stderr") {
                             return (
-                              <span key={idx} className="text-[#ff5277]">
+                              <div key={idx} className="p-1.5 rounded bg-red-950/40 border border-red-800 text-[#ff758f] whitespace-pre-wrap text-xs">
                                 {log.text}
-                              </span>
+                              </div>
                             );
-                          } else if (log.type === "status" || log.type === "exit") {
+                          } else if (log.type === "status") {
                             return (
-                              <span key={idx} className="text-[#ffe600] text-xs font-bold block my-1">
+                              <div key={idx} className="text-[#ffe600] text-[11px] font-bold border-y border-neutral-800 py-0.5 my-1">
                                 {log.text}
-                              </span>
+                              </div>
+                            );
+                          } else if (log.type === "exit") {
+                            return (
+                              <div key={idx} className="text-neutral-400 text-[11px] font-bold pt-1 border-t border-neutral-800">
+                                {log.text}
+                              </div>
                             );
                           } else {
                             return (
-                              <span key={idx} className="text-[#4ade80]">
+                              <div key={idx} className="text-[#4ade80] whitespace-pre-wrap leading-relaxed text-xs md:text-sm">
                                 {log.text}
-                              </span>
+                              </div>
                             );
                           }
                         })
@@ -865,12 +792,12 @@ export default function DevnixStudio() {
                       <div ref={terminalEndRef} />
                     </div>
 
-                    {/* Live Inline Input Bar */}
+                    {/* Integrated Interactive Command Bar (Fixed at bottom of terminal) */}
                     <form
                       onSubmit={handleSendRealtimeInput}
-                      className="bg-[#1c1c1c] border-t-2 border-[#333333] p-2 flex items-center gap-2"
+                      className="shrink-0 mt-2 bg-[#12161f] border-2 border-black rounded-lg p-1 px-2.5 flex items-center gap-2 shadow-[2px_2px_0px_#000]"
                     >
-                      <span className="text-[#00f0ff] font-mono font-black text-sm pl-1">
+                      <span className="text-[#00f0ff] font-black text-sm select-none">
                         ❯
                       </span>
                       <input
@@ -881,15 +808,15 @@ export default function DevnixStudio() {
                         disabled={!isProcessRunning}
                         placeholder={
                           isProcessRunning
-                            ? "Type input & press Enter..."
-                            : "Start program to enter input in real time..."
+                            ? "Type input here & press Enter..."
+                            : "Waiting for code to launch..."
                         }
-                        className="flex-1 bg-transparent text-[#ffffff] font-mono text-sm outline-none placeholder:text-neutral-600 disabled:opacity-40"
+                        className="flex-1 bg-transparent text-white font-mono text-xs md:text-sm outline-none placeholder:text-neutral-600 disabled:opacity-40"
                       />
                       <button
                         type="submit"
                         disabled={!isProcessRunning || !realtimeInput.trim()}
-                        className="bg-[#00f0ff] hover:bg-cyan-400 text-black border border-black px-3 py-1 rounded text-xs font-black flex items-center gap-1 disabled:opacity-30 cursor-pointer"
+                        className="neo-btn bg-[#00f0ff] hover:bg-cyan-400 text-black px-2.5 py-0.5 text-xs font-black flex items-center gap-1 disabled:opacity-30 cursor-pointer"
                       >
                         <span>Send</span>
                         <Send className="w-3 h-3 stroke-[2.5]" />
@@ -897,14 +824,44 @@ export default function DevnixStudio() {
                     </form>
                   </div>
                 ) : (
-                  /* 1B. BATCH STDIN OUTPUT VIEW */
-                  <div className="flex-1 flex flex-col gap-3 font-mono text-sm overflow-y-auto">
-                    {/* Standard Output */}
+                  /* 1B. BATCH STDIN VIEW */
+                  <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-y-auto">
+                    {/* Execution Metrics Header */}
+                    {result && (
+                      <div className="shrink-0 grid grid-cols-3 gap-2">
+                        <div className="bg-[#161b22] border border-black rounded p-1.5 text-center shadow-[1.5px_1.5px_0px_#000]">
+                          <span className="text-[9px] text-neutral-400 font-bold block">
+                            STATUS
+                          </span>
+                          <span className={`text-[11px] font-black ${result.status?.id === 3 ? "text-green-400" : "text-red-400"}`}>
+                            {result.status?.description || "DONE"}
+                          </span>
+                        </div>
+                        <div className="bg-[#161b22] border border-black rounded p-1.5 text-center shadow-[1.5px_1.5px_0px_#000]">
+                          <span className="text-[9px] text-neutral-400 font-bold block">
+                            TIME
+                          </span>
+                          <span className="text-[11px] font-black text-[#00f0ff]">
+                            {result.time ? `${result.time}s` : "--"}
+                          </span>
+                        </div>
+                        <div className="bg-[#161b22] border border-black rounded p-1.5 text-center shadow-[1.5px_1.5px_0px_#000]">
+                          <span className="text-[9px] text-neutral-400 font-bold block">
+                            MEMORY
+                          </span>
+                          <span className="text-[11px] font-black text-[#ffe600]">
+                            {result.memory ? `${result.memory} KB` : "--"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Standard Output Screen */}
                     {result?.stdout && (
-                      <div className="neo-box-sm bg-[#121212] text-[#4ade80] p-3 overflow-x-auto whitespace-pre-wrap selection:bg-[#ffe600] selection:text-black">
-                        <div className="text-[10px] text-neutral-400 font-bold uppercase pb-1 mb-2 border-b border-neutral-700 flex items-center justify-between">
+                      <div className="p-2.5 bg-[#11141c] border border-neutral-800 rounded-lg text-[#4ade80] whitespace-pre-wrap selection:bg-[#ffe600] selection:text-black text-xs md:text-sm">
+                        <div className="text-[9px] text-neutral-400 uppercase font-black pb-1 mb-1.5 border-b border-neutral-800 flex justify-between">
                           <span>Standard Output (stdout)</span>
-                          <span>SUCCESS</span>
+                          <span className="text-green-400">PASSED</span>
                         </div>
                         {result.stdout}
                       </div>
@@ -912,43 +869,23 @@ export default function DevnixStudio() {
 
                     {/* Standard Error (stderr) */}
                     {result?.stderr && (
-                      <div className="neo-box-sm bg-[#2b0f14] border-red-900 text-[#ff758f] p-3 overflow-x-auto whitespace-pre-wrap">
-                        <div className="text-[10px] text-red-400 font-bold uppercase pb-1 mb-2 border-b border-red-800 flex items-center gap-1.5">
+                      <div className="p-2.5 bg-red-950/30 border border-red-800 rounded-lg text-[#ff758f] whitespace-pre-wrap text-xs">
+                        <div className="text-[9px] text-red-400 uppercase font-black pb-1 mb-1.5 border-b border-red-800 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3" />
-                          <span>Execution / System Error (stderr)</span>
+                          <span>Error / Stderr</span>
                         </div>
                         {result.stderr}
                       </div>
                     )}
 
-                    {/* Compilation Output */}
-                    {result?.compile_output && (
-                      <div className="neo-box-sm bg-[#261706] border-orange-900 text-[#ffb04f] p-3 overflow-x-auto whitespace-pre-wrap">
-                        <div className="text-[10px] text-orange-400 font-bold uppercase pb-1 mb-2 border-b border-orange-800">
-                          Compiler Output
-                        </div>
-                        {result.compile_output}
-                      </div>
-                    )}
-
-                    {/* Empty State */}
+                    {/* Batch Empty State */}
                     {!result && (
-                      <div className="flex-1 flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-neutral-300 rounded-lg text-neutral-500 gap-3 my-auto">
-                        <div className="w-12 h-12 rounded-xl bg-[#ffe600] border-2 border-black flex items-center justify-center text-black shadow-[3px_3px_0px_#000]">
-                          <Play className="w-6 h-6 fill-black ml-0.5" />
-                        </div>
-                        <div>
-                          <p className="font-black text-black text-base">
-                            Batch Output Ready
-                          </p>
-                          <p className="text-xs font-semibold text-neutral-600 max-w-xs mt-1">
-                            Click &quot;RUN CODE&quot; or press{" "}
-                            <kbd className="bg-neutral-200 px-1 py-0.5 rounded border border-black text-black">
-                              Ctrl+Enter
-                            </kbd>{" "}
-                            to execute with pre-set inputs.
-                          </p>
-                        </div>
+                      <div className="flex-1 flex flex-col items-center justify-center text-center p-4 text-neutral-500 gap-2">
+                        <Layers className="w-6 h-6 text-[#00f0ff]" />
+                        <p className="font-bold text-white text-xs">Batch Stdin Mode Ready</p>
+                        <p className="text-[11px] text-neutral-400 max-w-xs">
+                          Inputs configured in the <strong>STDIN</strong> tab will be passed into the program upon launch.
+                        </p>
                       </div>
                     )}
                   </div>
@@ -958,114 +895,35 @@ export default function DevnixStudio() {
 
             {/* TAB 2: STDIN INPUT (BATCH MODE) */}
             {activeTab === "stdin" && executionMode === "batch" && (
-              <div className="flex-1 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-black uppercase text-neutral-700">
+              <div className="flex-1 min-h-0 flex flex-col gap-2">
+                <div className="shrink-0 flex items-center justify-between">
+                  <span className="text-xs font-black uppercase text-neutral-300">
                     Standard Input (stdin)
-                  </label>
+                  </span>
                   <button
                     onClick={() => setStdin("")}
-                    className="text-xs font-bold text-red-600 hover:underline"
+                    className="text-xs font-bold text-red-400 hover:underline"
                   >
-                    Clear Input
+                    Clear
                   </button>
                 </div>
-                <p className="text-xs text-neutral-500 font-semibold">
-                  Provide custom input data for programs that read from standard
-                  input (e.g. `input()` in Python or `cin` in C++).
-                </p>
                 <textarea
                   value={stdin}
                   onChange={(e) => setStdin(e.target.value)}
                   placeholder="Enter inputs here (one per line)..."
-                  className="w-full flex-1 p-3 neo-input font-mono text-sm resize-none"
+                  className="w-full flex-1 min-h-0 p-2.5 bg-[#12161f] border-2 border-black rounded-lg text-white font-mono text-xs md:text-sm resize-none outline-none focus:border-[#00f0ff] shadow-[2px_2px_0px_#000]"
                 />
-              </div>
-            )}
-
-            {/* TAB 3: SYSTEM & ENGINE INFO */}
-            {activeTab === "info" && (
-              <div className="flex-1 flex flex-col gap-4 text-xs overflow-y-auto">
-                <div className="neo-box-sm bg-[#ffe600] p-3">
-                  <h3 className="font-black text-sm uppercase text-black">
-                    ⚡ DEVNIX ENGINE DUAL MODES
-                  </h3>
-                  <p className="font-bold text-neutral-800 mt-1">
-                    Supports both Real-Time Interactive Streaming Terminal and Batch Stdin execution.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 font-mono">
-                  <div className="neo-box-sm bg-white p-2.5">
-                    <span className="text-[10px] text-neutral-500 block font-bold">
-                      ACTIVE MODE
-                    </span>
-                    <span className="font-bold text-sm text-black uppercase">
-                      {executionMode}
-                    </span>
-                  </div>
-                  <div className="neo-box-sm bg-white p-2.5">
-                    <span className="text-[10px] text-neutral-500 block font-bold">
-                      ACTIVE LANGUAGE
-                    </span>
-                    <span className="font-bold text-sm text-black">
-                      {selectedLanguage.label}
-                    </span>
-                  </div>
-                  <div className="neo-box-sm bg-white p-2.5">
-                    <span className="text-[10px] text-neutral-500 block font-bold">
-                      EDITOR THEME
-                    </span>
-                    <span className="font-bold text-sm text-black">
-                      {THEMES.find((t) => t.id === currentTheme)?.name || currentTheme}
-                    </span>
-                  </div>
-                  <div className="neo-box-sm bg-white p-2.5">
-                    <span className="text-[10px] text-neutral-500 block font-bold">
-                      LIVE STREAMING
-                    </span>
-                    <span className="font-bold text-sm text-green-600">
-                      SSE ACTIVE
-                    </span>
-                  </div>
-                </div>
-
-                <div className="neo-box-sm bg-white p-3 space-y-2">
-                  <h4 className="font-black uppercase text-black text-xs">
-                    Editor Capabilities
-                  </h4>
-                  <div className="space-y-1 font-mono text-[11px]">
-                    <div className="flex justify-between">
-                      <span className="text-neutral-600">Run / Launch Code:</span>
-                      <kbd className="bg-neutral-100 border border-black px-1.5 py-0.5 rounded font-bold">
-                        Ctrl + Enter
-                      </kbd>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-neutral-600">Auto Format Document:</span>
-                      <kbd className="bg-neutral-100 border border-black px-1.5 py-0.5 rounded font-bold">
-                        Shift + Alt + F
-                      </kbd>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-neutral-600">IntelliSense Autocomplete:</span>
-                      <kbd className="bg-neutral-100 border border-black px-1.5 py-0.5 rounded font-bold">
-                        Ctrl + Space
-                      </kbd>
-                    </div>
-                  </div>
-                </div>
               </div>
             )}
           </div>
 
-          {/* Output Footer Bar */}
-          <div className="bg-[#f0ede6] border-t-[2.5px] border-black px-4 py-1.5 flex items-center justify-between text-xs font-bold font-mono text-neutral-700">
+          {/* Terminal Footer Bar */}
+          <div className="shrink-0 bg-[#181c24] border-t-[2px] border-black px-3 py-1 flex items-center justify-between text-[11px] font-mono text-neutral-400">
             <span className="flex items-center gap-1.5">
-              <span className={`w-2 h-2 rounded-full ${isProcessRunning ? "bg-[#22c55e] animate-ping" : "bg-neutral-400"} inline-block`} />
-              <span>{executionMode === "interactive" ? "LIVE PTY TERMINAL" : "BATCH ENGINE"}</span>
+              <span className={`w-2 h-2 rounded-full ${isProcessRunning ? "bg-[#22c55e] animate-ping" : "bg-neutral-500"} inline-block`} />
+              <span>{executionMode === "interactive" ? "LIVE SSE TTY (DEVNIX-V1)" : "JUDGE0 BATCH ENGINE"}</span>
             </span>
-            <span className="text-[11px] text-neutral-500">DEVNIX v1.0</span>
+            <span className="text-[10px] text-neutral-500 font-bold">PORT: 2358</span>
           </div>
         </div>
       </div>

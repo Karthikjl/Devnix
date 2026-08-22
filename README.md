@@ -4,7 +4,7 @@
 
 <img src="./docs/logo.png" alt="Devnix Logo" width="160" style="border-radius: 12px; margin-bottom: 12px;" />
 
-![Devnix Studio UI Preview](./docs/devnix_preview.png)
+![Devnix Studio UI Preview](./docs/preview.png)
 
 **A high-performance, multi-language online code execution playground built with Next.js 15, TypeScript, Tailwind CSS, and Judge0 CE.**
 

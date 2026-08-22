@@ -201,18 +201,116 @@ RESULT: 11 PASSED, 0 FAILED (TOTAL: 11 LANGUAGES)
 
 ---
 
-## 🚢 Building for Production
+---
 
-To create an optimized production build:
+## 🤝 Collaborator & Contributing Guide
 
-```bash
-cd web
-npm run build
-npm run start
-```
+We welcome contributions of all kinds! Whether you want to add support for a **new programming language**, improve the **real-time terminal engine**, design a **new Neobrutalism theme**, or fix a bug — here is how to get started:
+
+### 🛠️ Development Workflow
+
+1. **Fork & Clone**:
+   ```bash
+   git clone https://github.com/Karthikjl/Devnix.git
+   cd Devnix
+   ```
+
+2. **Create a Feature Branch**:
+   ```bash
+   git checkout -b feature/your-feature-name
+   # or for bug fixes:
+   git checkout -b fix/issue-description
+   ```
+
+3. **Install Dependencies**:
+   ```bash
+   cd web
+   npm install
+   ```
+
+4. **Start the Dev Server**:
+   ```bash
+   npm run dev
+   ```
+
+5. **Run the Test Suite Before Pushing**:
+   ```bash
+   npm test
+   npm run build
+   ```
+
+---
+
+### ➕ How to Add a New Programming Language
+
+Adding a new language takes just **3 simple steps**:
+
+1. **Register Language in Config**:
+   Open [`web/src/lib/languages.ts`](./web/src/lib/languages.ts) and append your language to `SUPPORTED_LANGUAGES`:
+   ```typescript
+   {
+     id: 80, // Official Judge0 Language ID
+     name: "r",
+     label: "R (GCC)",
+     version: "4.0.0",
+     extension: "r",
+     monacoLang: "r", // Monaco language identifier
+     badgeColor: "#22c55e",
+     defaultCode: `print("Hello from R on Devnix!")\n`
+   }
+   ```
+
+2. **Add Execution Handling**:
+   - For **Batch Runner**: Add case in [`web/src/app/api/execute/route.ts`](./web/src/app/api/execute/route.ts).
+   - For **Real-Time Terminal Streaming**: Add case in [`web/src/lib/sessionManager.ts`](./web/src/lib/sessionManager.ts).
+
+3. **Add Test Case & Verify**:
+   Add test snippet in [`web/test_suite.mjs`](./web/test_suite.mjs) and verify:
+   ```bash
+   npm test
+   ```
+
+---
+
+### 🎨 How to Add New VS Code Themes
+
+Monaco Editor themes are configured in [`web/src/app/page.tsx`](./web/src/app/page.tsx):
+1. Add your theme definition inside `handleEditorWillMount` with `monaco.editor.defineTheme('your-theme-name', { ... })`.
+2. Add your theme object to `THEMES` array:
+   ```typescript
+   { id: "your-theme-name", name: "✨ Your Theme Title" }
+   ```
+
+---
+
+### 📐 Neobrutalism Design Guidelines
+
+When adding or modifying UI components, ensure you adhere to the **Devnix Neobrutalism Design System**:
+- **Borders**: Heavy solid black outlines (`border-2` or `border-[3px] border-black`).
+- **Drop Shadows**: Sharp, unblurred directional drop shadows (`shadow-[3px_3px_0px_#000]` or `shadow-[4px_4px_0px_#000]`).
+- **Interactive States**: Translate down on active press (`active:translate-x-[1.5px] active:translate-y-[1.5px] active:shadow-[1px_1px_0px_#000]`).
+- **Color Palette**: Use vibrant, high-contrast accents (Neon Yellow `#FFE600`, Electric Cyan `#00F0FF`, Lime Green `#22C55E`, Coral Pink `#FF5277`, Lavender `#C084FC`).
+
+---
+
+### 📥 Submitting Pull Requests
+
+1. Commit your changes with clear, descriptive commit messages:
+   ```bash
+   git commit -m "feat(languages): add Kotlin support with starter boilerplate"
+   ```
+2. Push to your branch:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+3. Open a **Pull Request (PR)** on GitHub with:
+   - Summary of changes and why they are needed.
+   - Confirmation that `npm test` and `npm run build` passed.
+   - Screenshot / video if any UI modifications were made (use `npm run screenshot` to capture!).
 
 ---
 
 ## 📄 License
 
 This project is open source and available under the **MIT License**.
+

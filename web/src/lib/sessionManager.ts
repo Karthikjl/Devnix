@@ -30,11 +30,11 @@ function getRunningWorkerContainer(): string | null {
     });
     if (res.stdout) {
       const names = res.stdout.trim().split(/\r?\n/).map((n) => n.trim()).filter(Boolean);
-      for (const name of names) {
-        if (name.includes("worker") || name.includes("server")) {
-          return name;
-        }
-      }
+      // Prioritize native runner container, then fallback to worker/server
+      const runner = names.find((n) => n.includes("runner"));
+      if (runner) return runner;
+      const worker = names.find((n) => n.includes("worker") || n.includes("server") || n.includes("judge0"));
+      if (worker) return worker;
     }
     return null;
   } catch {

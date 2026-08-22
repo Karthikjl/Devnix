@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { executeInDockerContainer } from "@/lib/dockerRunner";
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,9 +12,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const judge0Url = process.env.JUDGE0_URL || "http://localhost:2358";
+    const judge0Url = process.env.JUDGE0_URL || "http://server:2358";
 
-    // Strictly forward to Judge0 REST API (No fallbacks)
+    // 1. Attempt execution via Judge0 API if online
     try {
       const judgeRes = await fetch(`${judge0Url}/submissions?base64_encoded=false&wait=true`, {
         method: "POST",
@@ -26,31 +27,23 @@ export async function POST(req: NextRequest) {
           source_code,
           stdin: stdin || undefined,
         }),
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(6000),
       });
 
-      if (!judgeRes.ok) {
-        const errText = await judgeRes.text();
-        return NextResponse.json(
-          {
-            status: { id: 13, description: "Judge0 Error" },
-            stderr: `Judge0 Server Error (${judgeRes.status}): ${errText}`,
-          },
-          { status: judgeRes.status }
-        );
+      if (judgeRes.ok) {
+        const judgeData = await judgeRes.json();
+        // If Judge0 returned a real execution result (not an internal isolate error), return it
+        if (judgeData && judgeData.status && judgeData.status.id !== 13) {
+          return NextResponse.json(judgeData);
+        }
       }
-
-      const judgeData = await judgeRes.json();
-      return NextResponse.json(judgeData);
-    } catch (fetchErr: any) {
-      return NextResponse.json(
-        {
-          status: { id: 13, description: "Judge0 Offline" },
-          stderr: `Error: Unable to connect to Judge0 API at ${judge0Url}. Please ensure Judge0 containers are running.`,
-        },
-        { status: 503 }
-      );
+    } catch {
+      // Judge0 is offline or unavailable on this architecture -> proceed to native Docker Runner container
     }
+
+    // 2. Execute directly inside the sandboxed native Docker Runner container
+    const result = executeInDockerContainer(language_id, source_code, stdin);
+    return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json(
       {

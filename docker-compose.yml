@@ -14,11 +14,16 @@ services:
     volumes:
       - devnix-data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      - server
+  # 2. Universal Native Multi-Arch Execution Engine (ARM64 + x86_64)
+  runner:
+    build:
+      context: ./runner
+      dockerfile: Dockerfile
     restart: always
+    volumes:
+      - isolate-data:/tmp/sandbox
 
-  # 2. Judge0 API Server
+  # 3. Judge0 API Server (x86_64)
   server:
     image: judge0/judge0:latest
     platform: linux/amd64

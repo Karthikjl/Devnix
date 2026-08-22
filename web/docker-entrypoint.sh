@@ -1,13 +1,15 @@
 #!/bin/sh
 set -e
 
-# Ensure data directory exists and has write permissions for nextjs user
-mkdir -p /app/data
-chown -R nextjs:nodejs /app/data
-chmod 775 /app/data
+# Ensure data directory exists
+mkdir -p /app/data 2>/dev/null || true
 
-# Ensure docker socket is accessible if mounted
-chmod 666 /var/run/docker.sock 2>/dev/null || true
-
-# Switch to nextjs user and execute the command
-exec su-exec nextjs "$@"
+# If running as root, fix permissions and drop privileges to nextjs user
+if [ "$(id -u)" = "0" ]; then
+  chown -R nextjs:nodejs /app/data 2>/dev/null || true
+  chmod 775 /app/data 2>/dev/null || true
+  chmod 666 /var/run/docker.sock 2>/dev/null || true
+  exec su-exec nextjs "$@"
+else
+  exec "$@"
+fi

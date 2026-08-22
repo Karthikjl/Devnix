@@ -21,6 +21,7 @@ services:
   # 2. Judge0 API Server
   server:
     image: judge0/judge0:latest
+    platform: linux/amd64
     volumes:
       - ./judge0/judge0.conf:/judge0.conf:ro
     ports:
@@ -37,6 +38,7 @@ services:
   # 3. Judge0 Execution Workers
   workers:
     image: judge0/judge0:latest
+    platform: linux/amd64
     command: ["./scripts/workers"]
     volumes:
       - ./judge0/judge0.conf:/judge0.conf:ro

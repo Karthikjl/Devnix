@@ -1,4 +1,4 @@
-# ⚡ DEVNIX — Neobrutalist Online Code Studio & Judge
+# ⚡ DEVNIX - Neobrutalist Online Code Studio & Judge
 
 <div align="center">
 

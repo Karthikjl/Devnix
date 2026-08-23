@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import {
   SUPPORTED_LANGUAGES,
@@ -33,12 +33,14 @@ import {
   LogOut,
   Settings,
   ArrowRight,
+  GripVertical,
 } from "lucide-react";
 import { AuthModal } from "@/components/AuthModal";
 import { AuthGateway } from "@/components/AuthGateway";
 import { MustResetPasswordModal } from "@/components/MustResetPasswordModal";
 import { ProfileView } from "@/components/ProfileView";
 import { AdminView } from "@/components/AdminView";
+import { AiAssistantPanel } from "@/components/AiAssistantPanel";
 import { SafeUser } from "@/lib/auth";
 
 // Dynamically import Monaco Editor
@@ -142,6 +144,7 @@ export default function DevnixStudio() {
   const [activeView, setActiveView] = useState<"editor" | "profile" | "admin">("editor");
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState<boolean>(false);
+  const [isAiPanelOpen, setIsAiPanelOpen] = useState<boolean>(false);
   const [selfSignupEnabled, setSelfSignupEnabled] = useState<boolean>(true);
   const [isSetupNeeded, setIsSetupNeeded] = useState<boolean>(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
@@ -228,6 +231,110 @@ export default function DevnixStudio() {
   }, []);
 
   const isSwitchingLanguageRef = useRef<boolean>(false);
+  const activeTraceDecorationsRef = useRef<string[]>([]);
+
+  // Live Visual Trace Line Highlighter in Monaco Editor
+  const handleHighlightTraceLine = useCallback((lineNumber?: number | null) => {
+    if (!editorRef.current || !monacoRef.current) return;
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+
+    const currentEditorCode = editor.getValue();
+    const lineCount = currentEditorCode ? currentEditorCode.split("\n").length : 0;
+
+    // Strict Guard: If editor has no code or lineNumber is invalid / out of bounds, clear highlight immediately!
+    if (!currentEditorCode.trim() || !lineNumber || lineNumber < 1 || lineNumber > lineCount) {
+      activeTraceDecorationsRef.current = editor.deltaDecorations(
+        activeTraceDecorationsRef.current,
+        []
+      );
+      return;
+    }
+
+    try {
+      editor.revealLineInCenter(lineNumber, 0);
+
+      const newDecorations = [
+        {
+          range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+          options: {
+            isWholeLine: true,
+            className: "devnix-trace-active-line",
+            glyphMarginClassName: "devnix-trace-glyph-marker",
+            overviewRuler: {
+              color: "#ffe600",
+              position: monaco.editor.OverviewRulerLane.Full,
+            },
+            minimap: {
+              color: "#00f0ff",
+              position: monaco.editor.MinimapPosition.Inline,
+            },
+          },
+        },
+      ];
+
+      activeTraceDecorationsRef.current = editor.deltaDecorations(
+        activeTraceDecorationsRef.current,
+        newDecorations
+      );
+    } catch {}
+  }, []);
+
+  // Split Resizer State between Editor & Terminal (Min: 25%, Max: 75%)
+  const [editorSplitPercent, setEditorSplitPercent] = useState<number>(58);
+  const [isSplitDragging, setIsSplitDragging] = useState<boolean>(false);
+  const isSplitDraggingRef = useRef<boolean>(false);
+  const workspaceContainerRef = useRef<HTMLDivElement>(null);
+
+  // Load saved split percent on mount
+  useEffect(() => {
+    try {
+      const savedSplit = localStorage.getItem("devnix_editor_split");
+      if (savedSplit) {
+        const num = Number(savedSplit);
+        if (!isNaN(num) && num >= 25 && num <= 75) {
+          setEditorSplitPercent(num);
+        }
+      }
+    } catch {}
+  }, []);
+
+  const handleSplitMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isSplitDraggingRef.current = true;
+    setIsSplitDragging(true);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isSplitDraggingRef.current || !workspaceContainerRef.current) return;
+      const rect = workspaceContainerRef.current.getBoundingClientRect();
+      const rawPercent = ((e.clientX - rect.left) / rect.width) * 100;
+      const clamped = Math.max(25, Math.min(75, rawPercent));
+      setEditorSplitPercent(clamped);
+    };
+
+    const handleMouseUp = () => {
+      if (isSplitDraggingRef.current) {
+        isSplitDraggingRef.current = false;
+        setIsSplitDragging(false);
+        document.body.style.userSelect = "";
+        document.body.style.cursor = "";
+        try {
+          localStorage.setItem("devnix_editor_split", String(editorSplitPercent));
+        } catch {}
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [editorSplitPercent]);
 
   // Load saved preferences and language-wise code on client mount
   useEffect(() => {
@@ -804,14 +911,28 @@ export default function DevnixStudio() {
           </div>
         </div>
 
-        {/* Right: User Profile & Account Controls */}
-        <div className="flex items-center gap-2">
+        {/* Right: AI Assistant & User Profile Controls */}
+        <div className="flex items-center gap-2.5">
+          {/* ✨ AI Assistant Trigger Button */}
+          <button
+            onClick={() => setIsAiPanelOpen(!isAiPanelOpen)}
+            title="Open Devnix AI Coding Assistant"
+            className={`neo-btn px-3 py-1.5 text-xs font-black flex items-center gap-1.5 border-2 border-black shadow-[2px_2px_0px_#000] cursor-pointer transition-all ${
+              isAiPanelOpen
+                ? "bg-black text-[#00f0ff] shadow-[0px_0px_0px_#000] translate-x-[1px] translate-y-[1px]"
+                : "bg-[#00f0ff] text-black hover:bg-cyan-300"
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 fill-current" />
+            <span>AI ASSIST</span>
+          </button>
+
           {currentUser && (
             <div className="relative" ref={userMenuRef}>
               <button
                 type="button"
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className="neo-btn py-1.5 px-3 text-xs font-black flex items-center gap-2 border-2 border-black shadow-[2.5px_2.5px_0px_#000] bg-[#ffe600] text-black hover:bg-[#ffd500] cursor-pointer"
+                className="neo-btn py-1.5 px-3 text-xs font-black flex items-center gap-2 border-2 border-black shadow-[2px_2px_0px_#000] bg-[#ffe600] text-black hover:bg-[#ffd500] cursor-pointer"
               >
                 <div className="w-5 h-5 rounded-full bg-black text-white flex items-center justify-center text-[10px] font-black border border-black">
                   {currentUser.displayName.charAt(0).toUpperCase()}
@@ -918,12 +1039,20 @@ export default function DevnixStudio() {
           showToast={showToast}
         />
       ) : (
-        /* 🚀 MAIN SPLIT WORKSPACE: 100vh Fit */
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-0 overflow-hidden">
+        /* 🚀 MAIN SPLIT WORKSPACE: Resizable Split Pane between Editor and Terminal */
+        <div
+          ref={workspaceContainerRef}
+          className="flex-1 flex flex-col lg:flex-row items-stretch gap-0 min-h-0 overflow-hidden relative"
+        >
         {/* ========================================================================= */}
-        {/* LEFT COLUMN: MONACO / VS CODE EDITOR (7 Columns)                          */}
+        {/* LEFT COLUMN: MONACO / VS CODE EDITOR                                      */}
         {/* ========================================================================= */}
-        <div className="lg:col-span-7 flex flex-col neo-box overflow-hidden bg-[#ffffff] h-full min-h-0">
+        <div
+          style={{ width: `calc(${editorSplitPercent}% - 8px)` }}
+          className={`w-full lg:w-auto flex flex-col neo-box overflow-hidden bg-[#ffffff] h-full min-h-0 shrink-0 ${
+            isSplitDragging ? "select-none pointer-events-none" : ""
+          }`}
+        >
           {/* Editor Header Bar with Integrated Language, Theme, and Editor Tools */}
           <div className="shrink-0 bg-[#f0ede6] border-b-[2.5px] border-black p-2 px-3 flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 flex-wrap">
@@ -1197,6 +1326,7 @@ export default function DevnixStudio() {
                 fontSize: fontSize,
                 fontFamily: "var(--font-geist-mono), 'JetBrains Mono', 'Fira Code', Consolas, monospace",
                 fontLigatures: true,
+                automaticLayout: true,
                 minimap: { enabled: showMinimap },
                 scrollBeyondLastLine: false,
                 smoothScrolling: true,
@@ -1226,10 +1356,35 @@ export default function DevnixStudio() {
           </div>
         </div>
 
+        {/* 🌟 RESIZABLE SPLIT BAR BETWEEN EDITOR AND TERMINAL */}
+        <div
+          onMouseDown={handleSplitMouseDown}
+          title="Drag left/right to resize Code Editor & Terminal (Min: 25%, Max: 75%)"
+          className={`hidden lg:flex w-3.5 cursor-col-resize z-20 shrink-0 items-center justify-center group relative select-none transition-colors mx-0.5 ${
+            isSplitDragging ? "bg-[#ffe600]/30" : "hover:bg-[#ffe600]/20"
+          }`}
+        >
+          {/* Center Vertical Divider Line */}
+          <div className="w-[2px] h-full bg-black shadow-[1px_0px_0px_#000]" />
+          {/* Grip Pill */}
+          <div
+            className={`absolute w-3.5 h-12 rounded-full border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center justify-center transition-colors ${
+              isSplitDragging ? "bg-[#ffe600]" : "bg-white group-hover:bg-[#ffe600]"
+            }`}
+          >
+            <GripVertical className="w-2.5 h-2.5 text-black stroke-[3]" />
+          </div>
+        </div>
+
         {/* ========================================================================= */}
-        {/* RIGHT COLUMN: CLEAN, SLEEK, MINIMALIST CONSOLE & TERMINAL (5 Columns)     */}
+        {/* RIGHT COLUMN: CLEAN, SLEEK, MINIMALIST CONSOLE & TERMINAL                 */}
         {/* ========================================================================= */}
-        <div className="lg:col-span-5 flex flex-col neo-box overflow-hidden bg-[#ffffff] border-[2.5px] border-black shadow-[3.5px_3.5px_0px_0px_#000] h-full min-h-0">
+        <div
+          style={{ width: `calc(${100 - editorSplitPercent}% - 8px)` }}
+          className={`w-full lg:w-auto flex-1 flex flex-col neo-box overflow-hidden bg-[#ffffff] border-[2.5px] border-black shadow-[3.5px_3.5px_0px_0px_#000] h-full min-h-0 min-w-0 ${
+            isSplitDragging ? "select-none pointer-events-none" : ""
+          }`}
+        >
           {/* Terminal Header Bar with Integrated Mode Switcher and Primary RUN Button */}
           <div className="shrink-0 bg-[#f0ede6] border-b-[2.5px] border-black p-2 px-3 flex items-center justify-between gap-2 flex-wrap">
             {/* Left: Terminal Tab & Execution Mode Switcher */}
@@ -1528,6 +1683,28 @@ export default function DevnixStudio() {
           showToast={showToast}
         />
       )}
+
+      {/* 🤖 Devnix Context-Aware AI Companion Panel */}
+      <AiAssistantPanel
+        isOpen={isAiPanelOpen}
+        onClose={() => setIsAiPanelOpen(false)}
+        context={{
+          languageName: selectedLanguage.label,
+          languageVersion: selectedLanguage.version,
+          code: code,
+          stdin: stdin,
+          stdout: result?.stdout,
+          stderr: result?.stderr,
+          compileOutput: result?.compile_output,
+          exitStatus: result?.status?.description,
+          executionTime: result?.time,
+        }}
+        onApplyCode={(newCode) => {
+          setCode(newCode);
+          showToast("success", "Code Applied", "Updated Monaco Editor with AI code.");
+        }}
+        onHighlightLine={handleHighlightTraceLine}
+      />
 
       {/* 🔔 Right-Side Corner Neobrutalist Toast Notification Stack (Max 2 with Smooth Fade In/Out) */}
       <div className="fixed top-4 right-4 z-50 flex flex-col gap-2.5 pointer-events-none max-w-sm w-full">

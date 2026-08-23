@@ -9,6 +9,8 @@ export interface DockerExecutionResult {
   memory: number;
 }
 
+const CONTAINER_ENV_PATH = "export PATH=/usr/local/rust-1.40.0/bin:/usr/local/go-1.13.5/bin:/usr/local/php-7.4.1/bin:/usr/local/ruby-2.7.0/bin:/usr/local/openjdk13/bin:/usr/local/node-12.14.0/bin:/usr/local/python-3.8.1/bin:/usr/local/bin:/usr/bin:/bin:$PATH;";
+
 function getRunnerContainer(): string | null {
   try {
     const res = spawnSync("docker", ["ps", "--format", "{{.Names}}"], {
@@ -17,6 +19,7 @@ function getRunnerContainer(): string | null {
     });
     if (res.stdout) {
       const names = res.stdout.trim().split(/\r?\n/).map((n) => n.trim()).filter(Boolean);
+      // Prioritize dedicated runner container first
       const runner = names.find((n) => n.includes("runner"));
       if (runner) return runner;
       const worker = names.find((n) => n.includes("worker") || n.includes("server") || n.includes("judge0"));
@@ -69,8 +72,8 @@ export function executeInDockerContainer(
         encoding: "utf-8",
         timeout: 4000,
       });
-      compileCmd = `javac "${containerDir}/${className}.java"`;
-      runCmd = `java -cp "${containerDir}" ${className}`;
+      compileCmd = `${CONTAINER_ENV_PATH} javac "${containerDir}/${className}.java"`;
+      runCmd = `${CONTAINER_ENV_PATH} java -cp "${containerDir}" ${className}`;
     } else {
       const ext = extMap[languageId] || "py";
       const filePath = `${containerDir}/prog.${ext}`;
@@ -84,40 +87,40 @@ export function executeInDockerContainer(
         case 50:
         case 48:
         case 49:
-          compileCmd = `gcc -O2 "${filePath}" -o "${containerDir}/prog.exe"`;
+          compileCmd = `${CONTAINER_ENV_PATH} gcc -O2 "${filePath}" -o "${containerDir}/prog.exe"`;
           runCmd = `"${containerDir}/prog.exe"`;
           break;
         case 54:
         case 52:
         case 53:
-          compileCmd = `g++ -O2 "${filePath}" -o "${containerDir}/prog.exe"`;
+          compileCmd = `${CONTAINER_ENV_PATH} g++ -O2 "${filePath}" -o "${containerDir}/prog.exe"`;
           runCmd = `"${containerDir}/prog.exe"`;
           break;
         case 73:
-          compileCmd = `rustc -O "${filePath}" -o "${containerDir}/prog.exe"`;
+          compileCmd = `${CONTAINER_ENV_PATH} rustc -O "${filePath}" -o "${containerDir}/prog.exe"`;
           runCmd = `"${containerDir}/prog.exe"`;
           break;
         case 60:
-          runCmd = `go run "${filePath}"`;
+          runCmd = `${CONTAINER_ENV_PATH} go run "${filePath}"`;
           break;
         case 71:
-          runCmd = `python3 -u "${filePath}"`;
+          runCmd = `${CONTAINER_ENV_PATH} python3 -u "${filePath}"`;
           break;
         case 63:
         case 74:
-          runCmd = `node "${filePath}"`;
+          runCmd = `${CONTAINER_ENV_PATH} node "${filePath}"`;
           break;
         case 72:
-          runCmd = `ruby "${filePath}"`;
+          runCmd = `${CONTAINER_ENV_PATH} ruby "${filePath}"`;
           break;
         case 68:
-          runCmd = `php "${filePath}"`;
+          runCmd = `${CONTAINER_ENV_PATH} php "${filePath}"`;
           break;
         case 46:
           runCmd = `bash "${filePath}"`;
           break;
         default:
-          runCmd = `python3 -u "${filePath}"`;
+          runCmd = `${CONTAINER_ENV_PATH} python3 -u "${filePath}"`;
           break;
       }
     }

@@ -32,18 +32,18 @@ async function captureRealStudioScreenshot() {
     if (submitBtn) {
       const inputs = await page.$$("input");
       if (inputs.length >= 5) {
-        console.log("👑 Submitting Super Admin Setup Form...");
-        await inputs[0].type("Admin");
-        await inputs[1].type("admin@devnix.io");
-        await inputs[2].type("admin");
-        await inputs[3].type("AdminPass123!");
-        await inputs[4].type("AdminPass123!");
+        console.log("👑 Submitting Super Admin Setup Form (karthik / Admin123)...");
+        await inputs[0].type("Karthik");
+        await inputs[1].type("karthik@devnix.io");
+        await inputs[2].type("karthik");
+        await inputs[3].type("Admin123");
+        await inputs[4].type("Admin123");
         await submitBtn.click();
         await new Promise((resolve) => setTimeout(resolve, 3000));
-      } else if (inputs.length === 2) {
-        console.log("🔑 Logging in...");
-        await inputs[0].type("admin");
-        await inputs[1].type("AdminPass123!");
+      } else if (inputs.length >= 2) {
+        console.log("🔑 Logging in as Admin / Admin123...");
+        await inputs[0].type("Admin");
+        await inputs[1].type("Admin123");
         await submitBtn.click();
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }
@@ -55,7 +55,7 @@ async function captureRealStudioScreenshot() {
   // Wait for Monaco Editor & Studio Workspace to load
   console.log("⏳ Waiting for Monaco Editor & Studio workspace...");
   await page.waitForSelector(".monaco-editor", { timeout: 15000 }).catch(() => {});
-  await new Promise((resolve) => setTimeout(resolve, 3000));
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
   // Click RUN button to trigger execution in Terminal
   try {
@@ -65,12 +65,28 @@ async function captureRealStudioScreenshot() {
       if (text && text.includes("RUN")) {
         console.log("⚡ Triggering RUN button in Terminal...");
         await btn.click();
-        await new Promise((resolve) => setTimeout(resolve, 2500));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
         break;
       }
     }
   } catch (runErr) {
     console.log("ℹ️ Run trigger:", runErr.message);
+  }
+
+  // Click AI ASSIST button to open AI Companion drawer
+  try {
+    const buttons = await page.$$("button");
+    for (const btn of buttons) {
+      const text = await page.evaluate((el) => el.textContent, btn);
+      if (text && (text.includes("AI ASSIST") || text.includes("DEVNIX AI"))) {
+        console.log("🤖 Opening AI ASSIST Companion panel...");
+        await btn.click();
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        break;
+      }
+    }
+  } catch (aiErr) {
+    console.log("ℹ️ AI trigger:", aiErr.message);
   }
 
   await new Promise((resolve) => setTimeout(resolve, 2000));

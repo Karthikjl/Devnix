@@ -29,6 +29,22 @@
 - **⚡ Dual Execution Modes (Selectable)**:
   - **🟢 Real-Time Interactive Terminal**: Streams output live in real time using Server-Sent Events (SSE). When your program requests input (`input()`, `cin`), an interactive prompt `❯` appears directly in the terminal where you can type and send values live! Includes a `■ STOP PROCESS` button to terminate long-running processes.
   - **📦 Batch Stdin Mode**: Classic competitive programming mode where test inputs are pre-filled in the `INPUT (STDIN)` tab and executed in batch with time and memory stats.
+- **🤖 Context-Aware AI Companion & Multi-Provider Engine**:
+  - Integrated right-side AI companion that analyzes active Monaco code, compilation errors, stdin, and stderr.
+  - **Universal Provider Support**: Google Gemini, OpenAI, Anthropic Claude, DeepSeek, Groq, Mistral, Ollama (Local), OpenRouter, and Custom OpenAI-Compatible Endpoints.
+  - **Direct Endpoint Model Fetching**: Fetches live models directly from provider endpoints without hardcoded lists.
+  - **Per-Provider Key & Model Memory**: Saves API keys and chosen models individually per provider in `localStorage`.
+  - **Rich Markdown Engine**: Full GitHub-flavored markdown rendering with syntax-highlighted code blocks, tables, callouts, and 1-click **Apply to Monaco Editor**.
+- **🧠 Interactive Algorithmic Visualizer & Debugger Tool**:
+  - **Step-by-Step Execution Playback**: Play/Pause, Scrubber timeline, speed toggles (0.5x, 1x, 1.5x, 2x), and step forward/backward navigation.
+  - **Tactile Array & Moving Pointer Lanes**: Visual array blocks with index tags and animated multi-color pointer badges (`▲ left`, `▲ right`, `▲ mid`, `▲ i`, `▲ j`) that slide under active elements.
+  - **Live Hash Map / Set Lookup Tables**: Renders key-value cards with real-time insertion and lookup highlighting.
+  - **Stack & Queue Visualizer**: Visualizes LIFO / FIFO structures with `[BOTTOM / FRONT]` and `[TOP / BACK]` indicators.
+  - **Synchronized Monaco Line Glow**: Synchronously scrolls and highlights the executing line in glowing yellow with gutter markers in Monaco Editor.
+  - **Smart Condensed Stepping**: Automatically condenses long loops (e.g. 500 iterations) into 5 to 8 key representative steps grounded in user inputs.
+- **↔️ Draggable & Resizable Workspace**:
+  - **Editor & Terminal Split Resizer**: Tactile center divider with grip pill for horizontal resizing between Code Editor and Terminal (25% to 75% limits with auto Monaco layout recalculation).
+  - **AI Companion Panel Resizer**: Left-border drag handle to resize the AI drawer (380px to 850px constraints with localStorage memory).
 - **🎨 Neobrutalist Design System**: Bold black borders, vibrant pop colors (neon yellow, electric cyan, coral pink), and tactile drop-shadow interactions.
 - **💻 VS Code Monaco Editor Engine**: Powered by the official Monaco editor that powers Visual Studio Code with IntelliSense autocomplete, bracket pair colorization, smooth cursor animation, auto-closing brackets, and format document.
 - **🎭 7+ Editor Themes**:
@@ -50,6 +66,10 @@
   - Ruby (3.2+)
   - PHP (8.2+)
   - Bash (5.2+)
+- **👥 User Authentication & Admin Management**:
+  - Secure JWT authentication with HTTP-only cookie tokens and auto-refresh.
+  - Profile customization and password management.
+  - Admin Panel with user controls, self-signup toggle, and administrative user impersonation.
 - **⚡ Dual Execution Architecture**:
   - **Production Mode**: Communicates with sandboxed **Judge0 CE** containers running on Docker.
   - **Local Development Mode**: Built-in intelligent hybrid fallback runner for instant cross-platform testing (Windows, macOS, Linux) with full UTF-8 emoji support.

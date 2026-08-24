@@ -42,6 +42,7 @@ import { ProfileView } from "@/components/ProfileView";
 import { AdminView } from "@/components/AdminView";
 import { AiAssistantPanel } from "@/components/AiAssistantPanel";
 import { SafeUser } from "@/lib/auth";
+import { formatCodeUniversal } from "@/lib/codeFormatter";
 
 // Dynamically import Monaco Editor
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
@@ -137,6 +138,7 @@ export default function DevnixStudio() {
   const [showMinimap, setShowMinimap] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isProcessRunning, setIsProcessRunning] = useState<boolean>(false);
+  const [isFormatting, setIsFormatting] = useState<boolean>(false);
   const [result, setResult] = useState<ExecutionResult | null>(null);
   
   // User Authentication & Top Views
@@ -493,11 +495,30 @@ export default function DevnixStudio() {
 
   const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
+    monacoRef.current = monaco;
     if (code) {
       editor.setValue(code);
     }
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       handleRun();
+    });
+
+    // Register universal formatting providers for all supported languages
+    availableLanguages.forEach((lang) => {
+      try {
+        monaco.languages.registerDocumentFormattingEditProvider(lang.monacoLang, {
+          provideDocumentFormattingEdits(model: any) {
+            const raw = model.getValue();
+            const formatted = formatCodeUniversal(raw, lang.name || lang.monacoLang);
+            return [
+              {
+                range: model.getFullModelRange(),
+                text: formatted,
+              },
+            ];
+          },
+        });
+      } catch {}
     });
   };
 
@@ -563,8 +584,41 @@ export default function DevnixStudio() {
   };
 
   const handleFormatCode = () => {
-    if (editorRef.current) {
-      editorRef.current.getAction("editor.action.formatDocument")?.run();
+    if (!editorRef.current) return;
+    const editor = editorRef.current;
+    const currentCode = editor.getValue();
+    if (!currentCode || !currentCode.trim()) {
+      showToast("info", "Empty Code", "Write or paste some code first to format.");
+      return;
+    }
+
+    const activeLang = selectedLanguageRef.current || selectedLanguage;
+    const formatted = formatCodeUniversal(currentCode, activeLang.name || activeLang.monacoLang);
+
+    if (formatted !== currentCode) {
+      const model = editor.getModel();
+      if (model) {
+        editor.executeEdits("devnix-formatter", [
+          {
+            range: model.getFullModelRange(),
+            text: formatted,
+          },
+        ]);
+        editor.pushUndoStop();
+      } else {
+        editor.setValue(formatted);
+      }
+      setCode(formatted);
+      try {
+        localStorage.setItem(`devnix_code_${activeLang.id}`, formatted);
+      } catch {}
+      setIsFormatting(true);
+      setTimeout(() => setIsFormatting(false), 1200);
+      showToast("success", "Code Formatted", `Formatted ${activeLang.label} successfully.`);
+    } else {
+      setIsFormatting(true);
+      setTimeout(() => setIsFormatting(false), 800);
+      showToast("info", "Already Formatted", `${activeLang.label} code is already clean.`);
     }
   };
 
@@ -1263,11 +1317,21 @@ export default function DevnixStudio() {
 
               <button
                 onClick={handleFormatCode}
-                title="Format Code"
-                className="neo-btn bg-white hover:bg-neutral-100 p-1 text-xs flex items-center gap-1 border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer"
+                title="Format Code (Shift+Alt+F)"
+                className={`neo-btn p-1 text-xs flex items-center gap-1 border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer transition-colors ${
+                  isFormatting
+                    ? "bg-[#22c55e] text-black font-black"
+                    : "bg-white hover:bg-neutral-100"
+                }`}
               >
-                <AlignLeft className="w-3 h-3 stroke-[2.5]" />
-                <span className="text-[10px] font-bold hidden sm:inline">Format</span>
+                {isFormatting ? (
+                  <Check className="w-3 h-3 stroke-[3]" />
+                ) : (
+                  <AlignLeft className="w-3 h-3 stroke-[2.5]" />
+                )}
+                <span className="text-[10px] font-bold hidden sm:inline">
+                  {isFormatting ? "Formatted!" : "Format"}
+                </span>
               </button>
 
               <div className="flex items-center gap-1 bg-white border-2 border-black px-1.5 py-0.5 rounded text-[11px] font-bold shadow-[1.5px_1.5px_0px_#000]">

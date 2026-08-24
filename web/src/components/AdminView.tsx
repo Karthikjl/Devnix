@@ -76,6 +76,7 @@ export function AdminView({
   const [newDisplayName, setNewDisplayName] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<"ADMIN" | "USER">("USER");
+  const [newMustReset, setNewMustReset] = useState(true);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
 
   // Reset Password Modal
@@ -232,6 +233,30 @@ export function AdminView({
     }
   };
 
+  const handleToggleMustResetPassword = async (userId: string, currentMustReset: boolean) => {
+    try {
+      const nextVal = !currentMustReset;
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, mustResetPassword: nextVal }),
+      });
+      if (!res.ok) throw new Error("Failed to update password reset requirement");
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, mustResetPassword: nextVal } : u))
+      );
+      showToast(
+        "info",
+        "Must Reset Password",
+        nextVal
+          ? "User will be forced to change password upon next login."
+          : "Forced password reset removed for user."
+      );
+    } catch (err: any) {
+      showToast("error", "Update Failed", err.message);
+    }
+  };
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsCreatingUser(true);
@@ -245,6 +270,7 @@ export function AdminView({
           displayName: newDisplayName || newUsername,
           password: newPassword,
           role: newRole,
+          mustResetPassword: newMustReset,
         }),
       });
 
@@ -257,6 +283,7 @@ export function AdminView({
       setNewUsername("");
       setNewDisplayName("");
       setNewPassword("");
+      setNewMustReset(true);
       fetchAdminData();
     } catch (err: any) {
       showToast("error", "Creation Failed", err.message);
@@ -605,17 +632,27 @@ export function AdminView({
                         </button>
                       </td>
 
-                      {/* Must Reset Pill */}
+                      {/* Must Reset Password Toggle Button */}
                       <td className="py-3 px-3">
-                        <span
-                          className={`px-2 py-0.5 text-[10px] font-mono font-bold rounded border border-black ${
+                        <button
+                          type="button"
+                          onClick={() => handleToggleMustResetPassword(u.id, u.mustResetPassword)}
+                          disabled={isCurrent}
+                          className={`px-2.5 py-1 text-[10px] font-black rounded-lg border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer transition-all ${
                             u.mustResetPassword
-                              ? "bg-[#ffe600] text-black"
-                              : "bg-neutral-100 text-neutral-600"
-                          }`}
+                              ? "bg-[#ffe600] text-black hover:bg-[#ffd700]"
+                              : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                          title={
+                            isCurrent
+                              ? "Cannot force reset on your own active session"
+                              : u.mustResetPassword
+                              ? "Click to remove forced password reset requirement"
+                              : "Click to force user to reset password on login"
+                          }
                         >
-                          {u.mustResetPassword ? "Yes" : "No"}
-                        </span>
+                          {u.mustResetPassword ? "REQUIRED ⚠️" : "No"}
+                        </button>
                       </td>
 
                       {/* Actions */}
@@ -738,6 +775,19 @@ export function AdminView({
                   <option value="USER">USER (Standard Member)</option>
                   <option value="ADMIN">ADMIN (Full Privileges)</option>
                 </select>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="newMustReset"
+                  checked={newMustReset}
+                  onChange={(e) => setNewMustReset(e.target.checked)}
+                  className="w-4 h-4 border-2 border-black rounded accent-[#ffe600] cursor-pointer"
+                />
+                <label htmlFor="newMustReset" className="text-xs font-bold text-black cursor-pointer select-none">
+                  Require password reset on first login
+                </label>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">

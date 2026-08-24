@@ -1862,6 +1862,30 @@ export default function DevnixStudio() {
         />
       </div>
 
+      {/* 👤 Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onSuccess={(user) => {
+          setCurrentUser(user);
+          showToast("success", "Welcome!", `Signed in as @${user.username}`);
+        }}
+        selfSignupEnabled={selfSignupEnabled}
+      />
+
+      {/* 🔒 Mandatory Must Reset Password Modal */}
+      {currentUser && (
+        <MustResetPasswordModal
+          isOpen={Boolean(currentUser.mustResetPassword)}
+          user={currentUser}
+          onSuccess={(updatedUser) => {
+            setCurrentUser(updatedUser);
+            showToast("success", "Password Updated", "Your new password has been set.");
+          }}
+          showToast={showToast}
+        />
+      )}
+
       {/* 🔔 Right-Side Corner Neobrutalist Toast Notification Stack (Max 2 with Smooth Fade In/Out) */}
       <div className="fixed top-4 right-4 z-50 flex flex-col gap-2.5 pointer-events-none max-w-sm w-full">
         {toasts.map((toast) => {

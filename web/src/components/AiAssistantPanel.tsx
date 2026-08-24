@@ -68,6 +68,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   // Dynamic Endpoint Models State & Custom Dropdown State
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [isKeySaved, setIsKeySaved] = useState(false);
   const [modelFetchError, setModelFetchError] = useState<string | null>(null);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
@@ -261,16 +262,11 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
         provObj.defaultModel;
       setSelectedModel(activeModelForProv);
 
-      // Immediately initialize available models from provider
-      if (provObj.models) {
-        setAvailableModels(provObj.models);
-      }
-
       if (savedBaseUrl) {
         setCustomBaseUrl(savedBaseUrl);
       }
 
-      // Refresh live models from endpoint in background
+      // Fetch live models from endpoint
       fetchEndpointModels(initialProv, activeKeyForProv || undefined, savedBaseUrl || undefined, activeModelForProv);
 
       if (savedMessages) {
@@ -327,6 +323,26 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
     });
   };
 
+  // Save API Key strictly to localStorage without triggering network requests
+  const handleSaveApiKey = () => {
+    const trimmedKey = apiKey.trim();
+    setApiKeys((prev) => {
+      const updated = { ...prev, [selectedProvider]: trimmedKey };
+      try {
+        localStorage.setItem("devnix_ai_keys", JSON.stringify(updated));
+        localStorage.setItem(`devnix_ai_key_${selectedProvider}`, trimmedKey);
+      } catch {}
+      return updated;
+    });
+    if (customBaseUrl) {
+      try {
+        localStorage.setItem("devnix_ai_base_url", customBaseUrl);
+      } catch {}
+    }
+    setIsKeySaved(true);
+    setTimeout(() => setIsKeySaved(false), 1500);
+  };
+
   // Provider change handler
   const handleProviderChange = (provKey: string) => {
     setSelectedProvider(provKey);
@@ -343,16 +359,11 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
       prov.defaultModel;
     setSelectedModel(provModel);
 
-    // Instantly set models catalogue from provider
-    if (prov.models && prov.models.length > 0) {
-      setAvailableModels(prov.models);
-    }
-
     const targetBaseUrl = prov?.baseUrl && provKey !== "custom" ? prov.baseUrl : customBaseUrl;
     if (prov && provKey !== "custom") {
       setCustomBaseUrl(prov.baseUrl);
     }
-    // Background refresh from endpoint using this provider's key & model
+    // Fetch live models from the actual endpoint
     fetchEndpointModels(provKey, provApiKey || undefined, targetBaseUrl || undefined, provModel);
   };
 
@@ -1257,22 +1268,28 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
                 type="password"
                 value={apiKey}
                 onChange={(e) => handleApiKeyChange(e.target.value)}
-                onBlur={() => {
-                  if (apiKey.trim()) {
-                    fetchEndpointModels(selectedProvider, apiKey.trim(), customBaseUrl || undefined);
-                  }
-                }}
                 placeholder={`Enter ${currentProvider.envKeyName} (or leave empty if set in server env)`}
                 className="w-full bg-white border-2 border-black p-2 font-mono text-xs rounded shadow-[2px_2px_0px_#000] outline-none"
               />
               <button
                 type="button"
-                onClick={() => fetchEndpointModels(selectedProvider, apiKey.trim(), customBaseUrl || undefined)}
+                onClick={handleSaveApiKey}
                 disabled={isLoadingModels}
-                title="Fetch models with this API key"
-                className="neo-btn bg-[#00f0ff] text-black px-2.5 py-2 text-[10px] font-black rounded border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer flex-shrink-0 disabled:opacity-50"
+                title="Save API Key to browser storage"
+                className={`neo-btn px-3 py-2 text-[10px] font-black rounded border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer flex-shrink-0 transition-colors flex items-center gap-1 ${
+                  isKeySaved
+                    ? "bg-[#22c55e] text-black"
+                    : "bg-[#ffe600] hover:bg-[#ffd700] text-black"
+                } disabled:opacity-50`}
               >
-                Fetch
+                {isKeySaved ? (
+                  <>
+                    <Check className="w-3 h-3 stroke-[3]" />
+                    <span>Saved!</span>
+                  </>
+                ) : (
+                  <span>Save</span>
+                )}
               </button>
             </div>
           </div>

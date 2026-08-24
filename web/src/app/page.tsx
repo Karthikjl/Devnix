@@ -282,10 +282,12 @@ export default function DevnixStudio() {
     } catch {}
   }, []);
 
-  // Split Resizer State between Editor & Terminal (Min: 25%, Max: 75%)
+  // Split Resizers State for 2-panel and 3-panel mode
   const [editorSplitPercent, setEditorSplitPercent] = useState<number>(58);
-  const [isSplitDragging, setIsSplitDragging] = useState<boolean>(false);
-  const isSplitDraggingRef = useRef<boolean>(false);
+  const [panel1Percent, setPanel1Percent] = useState<number>(38);
+  const [panel2Percent, setPanel2Percent] = useState<number>(32);
+  const [activeDraggingResizer, setActiveDraggingResizer] = useState<1 | 2 | null>(null);
+  const activeDraggingResizerRef = useRef<1 | 2 | null>(null);
   const workspaceContainerRef = useRef<HTMLDivElement>(null);
 
   // Load saved split percent on mount
@@ -294,38 +296,91 @@ export default function DevnixStudio() {
       const savedSplit = localStorage.getItem("devnix_editor_split");
       if (savedSplit) {
         const num = Number(savedSplit);
-        if (!isNaN(num) && num >= 25 && num <= 75) {
-          setEditorSplitPercent(num);
-        }
+        if (!isNaN(num) && num >= 25 && num <= 75) setEditorSplitPercent(num);
+      }
+      const savedP1 = localStorage.getItem("devnix_panel1_width");
+      if (savedP1) {
+        const num = Number(savedP1);
+        if (!isNaN(num) && num >= 20 && num <= 60) setPanel1Percent(num);
+      }
+      const savedP2 = localStorage.getItem("devnix_panel2_width");
+      if (savedP2) {
+        const num = Number(savedP2);
+        if (!isNaN(num) && num >= 20 && num <= 50) setPanel2Percent(num);
+      }
+      const savedAiOpen = localStorage.getItem("devnix_ai_panel_open");
+      if (savedAiOpen !== null) {
+        setIsAiPanelOpen(savedAiOpen === "true");
       }
     } catch {}
   }, []);
 
-  const handleSplitMouseDown = (e: React.MouseEvent) => {
+  const handleToggleAiPanel = () => {
+    setIsAiPanelOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("devnix_ai_panel_open", String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleResizer1MouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
-    isSplitDraggingRef.current = true;
-    setIsSplitDragging(true);
+    activeDraggingResizerRef.current = 1;
+    setActiveDraggingResizer(1);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+  };
+
+  const handleResizer2MouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    activeDraggingResizerRef.current = 2;
+    setActiveDraggingResizer(2);
     document.body.style.userSelect = "none";
     document.body.style.cursor = "col-resize";
   };
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isSplitDraggingRef.current || !workspaceContainerRef.current) return;
+      const dragging = activeDraggingResizerRef.current;
+      if (!dragging || !workspaceContainerRef.current) return;
       const rect = workspaceContainerRef.current.getBoundingClientRect();
       const rawPercent = ((e.clientX - rect.left) / rect.width) * 100;
-      const clamped = Math.max(25, Math.min(75, rawPercent));
-      setEditorSplitPercent(clamped);
+
+      if (dragging === 1) {
+        if (!isAiPanelOpen) {
+          const clamped = Math.max(25, Math.min(75, rawPercent));
+          setEditorSplitPercent(clamped);
+        } else {
+          // Panel 1 min 22%, max 58% (strictly reserves min 20% for Terminal and 22% for AI)
+          const newP1 = Math.max(22, Math.min(58, rawPercent));
+          setPanel1Percent(newP1);
+          const maxAllowedP2 = 100 - newP1 - 22;
+          if (panel2Percent > maxAllowedP2) {
+            setPanel2Percent(Math.max(20, maxAllowedP2));
+          }
+        }
+      } else if (dragging === 2) {
+        // Dragging boundary between Panel 2 & Panel 3 (P1 + P2 = rawPercent)
+        // Strictly guarantees Panel 3 receives at least 22% and never overflows
+        const maxAllowedP2 = 100 - panel1Percent - 22;
+        const targetP2 = rawPercent - panel1Percent;
+        const newP2 = Math.max(20, Math.min(maxAllowedP2, targetP2));
+        setPanel2Percent(newP2);
+      }
     };
 
     const handleMouseUp = () => {
-      if (isSplitDraggingRef.current) {
-        isSplitDraggingRef.current = false;
-        setIsSplitDragging(false);
+      if (activeDraggingResizerRef.current) {
+        activeDraggingResizerRef.current = null;
+        setActiveDraggingResizer(null);
         document.body.style.userSelect = "";
         document.body.style.cursor = "";
         try {
           localStorage.setItem("devnix_editor_split", String(editorSplitPercent));
+          localStorage.setItem("devnix_panel1_width", String(panel1Percent));
+          localStorage.setItem("devnix_panel2_width", String(panel2Percent));
         } catch {}
       }
     };
@@ -336,7 +391,7 @@ export default function DevnixStudio() {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [editorSplitPercent]);
+  }, [editorSplitPercent, panel1Percent, panel2Percent, isAiPanelOpen]);
 
   // Load saved preferences and language-wise code on client mount
   useEffect(() => {
@@ -965,21 +1020,8 @@ export default function DevnixStudio() {
           </div>
         </div>
 
-        {/* Right: AI Assistant & User Profile Controls */}
+        {/* Right: User Profile Controls */}
         <div className="flex items-center gap-2.5">
-          {/* ✨ AI Assistant Trigger Button */}
-          <button
-            onClick={() => setIsAiPanelOpen(!isAiPanelOpen)}
-            title="Open Devnix AI Coding Assistant"
-            className={`neo-btn px-3 py-1.5 text-xs font-black flex items-center gap-1.5 border-2 border-black shadow-[2px_2px_0px_#000] cursor-pointer transition-all ${
-              isAiPanelOpen
-                ? "bg-black text-[#00f0ff] shadow-[0px_0px_0px_#000] translate-x-[1px] translate-y-[1px]"
-                : "bg-[#00f0ff] text-black hover:bg-cyan-300"
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 fill-current" />
-            <span>AI ASSIST</span>
-          </button>
 
           {currentUser && (
             <div className="relative" ref={userMenuRef}>
@@ -1096,15 +1138,15 @@ export default function DevnixStudio() {
         /* 🚀 MAIN SPLIT WORKSPACE: Resizable Split Pane between Editor and Terminal */
         <div
           ref={workspaceContainerRef}
-          className="flex-1 flex flex-col lg:flex-row items-stretch gap-0 min-h-0 overflow-hidden relative"
+          className="flex-1 flex flex-col lg:flex-row items-stretch gap-0 min-h-0 overflow-hidden relative p-1 pb-1.5"
         >
         {/* ========================================================================= */}
         {/* LEFT COLUMN: MONACO / VS CODE EDITOR                                      */}
         {/* ========================================================================= */}
         <div
-          style={{ width: `calc(${editorSplitPercent}% - 8px)` }}
-          className={`w-full lg:w-auto flex flex-col neo-box overflow-hidden bg-[#ffffff] h-full min-h-0 shrink-0 ${
-            isSplitDragging ? "select-none pointer-events-none" : ""
+          style={{ width: isAiPanelOpen ? `${panel1Percent}%` : `${editorSplitPercent}%` }}
+          className={`w-full lg:w-auto flex flex-col neo-box overflow-hidden bg-[#ffffff] h-full min-h-0 min-w-0 shrink-0 box-border ${
+            activeDraggingResizer ? "select-none pointer-events-none" : ""
           }`}
         >
           {/* Editor Header Bar with Integrated Language, Theme, and Editor Tools */}
@@ -1422,10 +1464,10 @@ export default function DevnixStudio() {
 
         {/* 🌟 RESIZABLE SPLIT BAR BETWEEN EDITOR AND TERMINAL */}
         <div
-          onMouseDown={handleSplitMouseDown}
-          title="Drag left/right to resize Code Editor & Terminal (Min: 25%, Max: 75%)"
+          onMouseDown={handleResizer1MouseDown}
+          title="Drag left/right to resize Code Editor & Terminal"
           className={`hidden lg:flex w-3.5 cursor-col-resize z-20 shrink-0 items-center justify-center group relative select-none transition-colors mx-0.5 ${
-            isSplitDragging ? "bg-[#ffe600]/30" : "hover:bg-[#ffe600]/20"
+            activeDraggingResizer === 1 ? "bg-[#ffe600]/30" : "hover:bg-[#ffe600]/20"
           }`}
         >
           {/* Center Vertical Divider Line */}
@@ -1433,7 +1475,7 @@ export default function DevnixStudio() {
           {/* Grip Pill */}
           <div
             className={`absolute w-3.5 h-12 rounded-full border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center justify-center transition-colors ${
-              isSplitDragging ? "bg-[#ffe600]" : "bg-white group-hover:bg-[#ffe600]"
+              activeDraggingResizer === 1 ? "bg-[#ffe600]" : "bg-white group-hover:bg-[#ffe600]"
             }`}
           >
             <GripVertical className="w-2.5 h-2.5 text-black stroke-[3]" />
@@ -1444,9 +1486,9 @@ export default function DevnixStudio() {
         {/* RIGHT COLUMN: CLEAN, SLEEK, MINIMALIST CONSOLE & TERMINAL                 */}
         {/* ========================================================================= */}
         <div
-          style={{ width: `calc(${100 - editorSplitPercent}% - 8px)` }}
-          className={`w-full lg:w-auto flex-1 flex flex-col neo-box overflow-hidden bg-[#ffffff] border-[2.5px] border-black shadow-[3.5px_3.5px_0px_0px_#000] h-full min-h-0 min-w-0 ${
-            isSplitDragging ? "select-none pointer-events-none" : ""
+          style={{ width: isAiPanelOpen ? `${panel2Percent}%` : `calc(${100 - editorSplitPercent}% - 6px)` }}
+          className={`w-full lg:w-auto flex flex-col neo-box overflow-hidden bg-[#ffffff] border-[2.5px] border-black shadow-[3.5px_3.5px_0px_0px_#000] h-full min-h-0 min-w-0 relative shrink-0 box-border ${
+            activeDraggingResizer ? "select-none pointer-events-none" : ""
           }`}
         >
           {/* Terminal Header Bar with Integrated Mode Switcher and Primary RUN Button */}
@@ -1721,54 +1763,104 @@ export default function DevnixStudio() {
             <span>{executionMode === "interactive" ? "Terminal (PTY Stream)" : "Batch Runner"}</span>
             <span>UTF-8 · Ready</span>
           </div>
+
+          {/* 🤖 Overlay Ribbon AI Button on the right of Terminal */}
+          {!isAiPanelOpen && (
+            <button
+              onClick={handleToggleAiPanel}
+              title="Open AI Companion (3-Panel Workspace)"
+              className="hidden lg:flex absolute top-1/2 -translate-y-1/2 -right-1 z-30 bg-[#ffe600] hover:bg-[#ffd700] text-black border-2 border-black shadow-[-2px_2px_0px_#000] px-1.5 py-3 rounded-l-md font-black text-xs cursor-pointer flex-col items-center gap-1.5 transition-all hover:translate-x-[-2px] select-none"
+            >
+              <Sparkles className="w-3.5 h-3.5 fill-black" />
+              <span className="text-[9px] uppercase font-black [writing-mode:vertical-lr] tracking-widest">
+                AI ASSIST
+              </span>
+            </button>
+          )}
         </div>
+
+        {/* 🌟 RESIZABLE SPLIT BAR BETWEEN TERMINAL AND AI COMPANION */}
+        {isAiPanelOpen && (
+          <div
+            onMouseDown={handleResizer2MouseDown}
+            title="Drag left/right to resize Terminal & AI Companion"
+            className={`hidden lg:flex w-3.5 cursor-col-resize z-20 shrink-0 items-center justify-center group relative select-none transition-colors mx-0.5 ${
+              activeDraggingResizer === 2 ? "bg-[#ffe600]/30" : "hover:bg-[#ffe600]/20"
+            }`}
+          >
+            {/* Center Vertical Divider Line */}
+            <div className="w-[2px] h-full bg-black shadow-[1px_0px_0px_#000]" />
+            {/* Grip Pill */}
+            <div
+              className={`absolute w-3.5 h-12 rounded-full border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center justify-center transition-colors ${
+                activeDraggingResizer === 2 ? "bg-[#ffe600]" : "bg-white group-hover:bg-[#ffe600]"
+              }`}
+            >
+              <GripVertical className="w-2.5 h-2.5 text-black stroke-[3]" />
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* 3RD COLUMN: DEVNIX AI COMPANION (EMBEDDED RESIZABLE 3RD PANEL)            */}
+        {/* ========================================================================= */}
+        {isAiPanelOpen && (
+          <div
+            style={{ width: `${100 - panel1Percent - panel2Percent}%` }}
+            className={`hidden lg:flex flex-col h-full min-h-0 min-w-0 overflow-hidden box-border ${
+              activeDraggingResizer ? "select-none pointer-events-none" : ""
+            }`}
+          >
+            <AiAssistantPanel
+              embedded={true}
+              isOpen={true}
+              onClose={handleToggleAiPanel}
+              context={{
+                languageName: selectedLanguage.label,
+                languageVersion: selectedLanguage.version,
+                code: code,
+                stdin: stdin,
+                stdout: result?.stdout,
+                stderr: result?.stderr,
+                compileOutput: result?.compile_output,
+                exitStatus: result?.status?.description,
+                executionTime: result?.time,
+              }}
+              onApplyCode={(newCode) => {
+                setCode(newCode);
+                showToast("success", "Code Applied", "Updated Monaco Editor with AI code.");
+              }}
+              onHighlightLine={handleHighlightTraceLine}
+            />
+          </div>
+        )}
       </div>
       )}
 
-      {/* 👤 Auth Modal */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onSuccess={(user) => {
-          setCurrentUser(user);
-          showToast("success", "Welcome!", `Signed in as @${user.username}`);
-        }}
-        selfSignupEnabled={selfSignupEnabled}
-      />
-
-      {/* 🔒 Mandatory Must Reset Password Modal */}
-      {currentUser && (
-        <MustResetPasswordModal
-          isOpen={Boolean(currentUser.mustResetPassword)}
-          user={currentUser}
-          onSuccess={(updatedUser) => {
-            setCurrentUser(updatedUser);
+      {/* Mobile / Small Screen AI Companion Drawer Overlay Fallback */}
+      <div className="lg:hidden">
+        <AiAssistantPanel
+          embedded={false}
+          isOpen={isAiPanelOpen}
+          onClose={handleToggleAiPanel}
+          context={{
+            languageName: selectedLanguage.label,
+            languageVersion: selectedLanguage.version,
+            code: code,
+            stdin: stdin,
+            stdout: result?.stdout,
+            stderr: result?.stderr,
+            compileOutput: result?.compile_output,
+            exitStatus: result?.status?.description,
+            executionTime: result?.time,
           }}
-          showToast={showToast}
+          onApplyCode={(newCode) => {
+            setCode(newCode);
+            showToast("success", "Code Applied", "Updated Monaco Editor with AI code.");
+          }}
+          onHighlightLine={handleHighlightTraceLine}
         />
-      )}
-
-      {/* 🤖 Devnix Context-Aware AI Companion Panel */}
-      <AiAssistantPanel
-        isOpen={isAiPanelOpen}
-        onClose={() => setIsAiPanelOpen(false)}
-        context={{
-          languageName: selectedLanguage.label,
-          languageVersion: selectedLanguage.version,
-          code: code,
-          stdin: stdin,
-          stdout: result?.stdout,
-          stderr: result?.stderr,
-          compileOutput: result?.compile_output,
-          exitStatus: result?.status?.description,
-          executionTime: result?.time,
-        }}
-        onApplyCode={(newCode) => {
-          setCode(newCode);
-          showToast("success", "Code Applied", "Updated Monaco Editor with AI code.");
-        }}
-        onHighlightLine={handleHighlightTraceLine}
-      />
+      </div>
 
       {/* 🔔 Right-Side Corner Neobrutalist Toast Notification Stack (Max 2 with Smooth Fade In/Out) */}
       <div className="fixed top-4 right-4 z-50 flex flex-col gap-2.5 pointer-events-none max-w-sm w-full">

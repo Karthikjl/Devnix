@@ -40,6 +40,7 @@ interface AiAssistantPanelProps {
   context: CodeContext;
   onApplyCode: (newCode: string) => void;
   onHighlightLine?: (lineNumber: number | null) => void;
+  embedded?: boolean;
 }
 
 export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
@@ -48,6 +49,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   context,
   onApplyCode,
   onHighlightLine,
+  embedded = false,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -68,6 +70,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   // Dynamic Endpoint Models State & Custom Dropdown State
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [isKeySaved, setIsKeySaved] = useState(false);
   const [modelFetchError, setModelFetchError] = useState<string | null>(null);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
@@ -261,16 +264,11 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
         provObj.defaultModel;
       setSelectedModel(activeModelForProv);
 
-      // Immediately initialize available models from provider
-      if (provObj.models) {
-        setAvailableModels(provObj.models);
-      }
-
       if (savedBaseUrl) {
         setCustomBaseUrl(savedBaseUrl);
       }
 
-      // Refresh live models from endpoint in background
+      // Fetch live models from endpoint
       fetchEndpointModels(initialProv, activeKeyForProv || undefined, savedBaseUrl || undefined, activeModelForProv);
 
       if (savedMessages) {
@@ -327,6 +325,26 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
     });
   };
 
+  // Save API Key strictly to localStorage without triggering network requests
+  const handleSaveApiKey = () => {
+    const trimmedKey = apiKey.trim();
+    setApiKeys((prev) => {
+      const updated = { ...prev, [selectedProvider]: trimmedKey };
+      try {
+        localStorage.setItem("devnix_ai_keys", JSON.stringify(updated));
+        localStorage.setItem(`devnix_ai_key_${selectedProvider}`, trimmedKey);
+      } catch {}
+      return updated;
+    });
+    if (customBaseUrl) {
+      try {
+        localStorage.setItem("devnix_ai_base_url", customBaseUrl);
+      } catch {}
+    }
+    setIsKeySaved(true);
+    setTimeout(() => setIsKeySaved(false), 1500);
+  };
+
   // Provider change handler
   const handleProviderChange = (provKey: string) => {
     setSelectedProvider(provKey);
@@ -343,16 +361,11 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
       prov.defaultModel;
     setSelectedModel(provModel);
 
-    // Instantly set models catalogue from provider
-    if (prov.models && prov.models.length > 0) {
-      setAvailableModels(prov.models);
-    }
-
     const targetBaseUrl = prov?.baseUrl && provKey !== "custom" ? prov.baseUrl : customBaseUrl;
     if (prov && provKey !== "custom") {
       setCustomBaseUrl(prov.baseUrl);
     }
-    // Background refresh from endpoint using this provider's key & model
+    // Fetch live models from the actual endpoint
     fetchEndpointModels(provKey, provApiKey || undefined, targetBaseUrl || undefined, provModel);
   };
 
@@ -935,46 +948,52 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   return (
     <aside
       aria-label="Devnix AI Companion Panel"
-      style={{ width: `${panelWidth}px`, maxWidth: "90vw" }}
-      className={`fixed inset-y-0 right-0 z-50 bg-[#fbfbfa] text-black border-l-4 border-black shadow-[-8px_0px_0px_rgba(0,0,0,0.15)] flex flex-col select-text ${
-        isDragging ? "transition-none select-none" : "transition-all duration-150"
+      style={embedded ? undefined : { width: `${panelWidth}px`, maxWidth: "90vw" }}
+      className={`${
+        embedded
+          ? "w-full h-full flex flex-col bg-[#fbfbfa] neo-box border-[2.5px] border-black shadow-[3.5px_3.5px_0px_0px_#000] overflow-hidden select-text relative min-w-0"
+          : `fixed inset-y-0 right-0 z-50 bg-[#fbfbfa] text-black border-l-4 border-black shadow-[-8px_0px_0px_rgba(0,0,0,0.15)] flex flex-col select-text ${
+              isDragging ? "transition-none select-none" : "transition-all duration-150"
+            }`
       }`}
     >
-      {/* 🌟 Left Border Resizer Drag Handle */}
-      <div
-        onMouseDown={handleResizeMouseDown}
-        title="Drag to resize AI Companion (Min: 380px, Max: 850px)"
-        className={`absolute top-0 bottom-0 -left-3 w-6 cursor-col-resize z-50 flex items-center justify-center group select-none transition-colors ${
-          isDragging ? "bg-[#ffe600]/30" : "hover:bg-[#ffe600]/20"
-        }`}
-      >
+      {/* 🌟 Left Border Resizer Drag Handle (Only in overlay mode) */}
+      {!embedded && (
         <div
-          className={`w-3.5 h-12 rounded-full border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center justify-center transition-colors ${
-            isDragging ? "bg-[#ffe600]" : "bg-white group-hover:bg-[#ffe600]"
+          onMouseDown={handleResizeMouseDown}
+          title="Drag to resize AI Companion (Min: 380px, Max: 850px)"
+          className={`absolute top-0 bottom-0 -left-3 w-6 cursor-col-resize z-50 flex items-center justify-center group select-none transition-colors ${
+            isDragging ? "bg-[#ffe600]/30" : "hover:bg-[#ffe600]/20"
           }`}
         >
-          <GripVertical className="w-2.5 h-2.5 text-black stroke-[3]" />
+          <div
+            className={`w-3.5 h-12 rounded-full border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center justify-center transition-colors ${
+              isDragging ? "bg-[#ffe600]" : "bg-white group-hover:bg-[#ffe600]"
+            }`}
+          >
+            <GripVertical className="w-2.5 h-2.5 text-black stroke-[3]" />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 1. Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-[#f0ede6] border-b-3 border-black text-black select-none">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded bg-[#ffe600] text-black flex items-center justify-center border-2 border-black shadow-[2px_2px_0px_#000]">
-            <Sparkles className="w-4 h-4 fill-black text-black" />
+      <div className="flex items-center justify-between px-3 py-2.5 bg-[#f0ede6] border-b-[2.5px] border-black text-black select-none shrink-0 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-7 h-7 rounded bg-[#ffe600] text-black flex items-center justify-center border-2 border-black shadow-[1.5px_1.5px_0px_#000] shrink-0">
+            <Sparkles className="w-3.5 h-3.5 fill-black text-black" />
           </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <h2 className="font-black text-sm tracking-wide text-black">DEVNIX AI COMPANION</h2>
-              <span className="bg-[#ffe600] text-black border border-black text-[9px] font-black px-1.5 py-0.2 rounded shadow-[1px_1px_0px_#000]">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h2 className="font-black text-xs sm:text-sm tracking-wide text-black truncate">DEVNIX AI COMPANION</h2>
+              <span className="bg-[#ffe600] text-black border border-black text-[9px] font-black px-1.5 py-0.2 rounded shadow-[1px_1px_0px_#000] shrink-0">
                 PRO
               </span>
             </div>
-            <p className="text-[10px] font-bold text-neutral-600">Context-Aware Code & Debug Engine</p>
+            <p className="text-[10px] font-bold text-neutral-600 truncate">Context-Aware Code & Debug Engine</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 shrink-0 ml-1">
           <button
             onClick={() => setShowSettings(!showSettings)}
             title="Configure AI Provider & API Key"
@@ -982,7 +1001,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
               showSettings ? "bg-black text-[#ffe600]" : "bg-white hover:bg-neutral-100 text-black font-black"
             }`}
           >
-            <Settings2 className="w-4 h-4 stroke-[2.5]" />
+            <Settings2 className="w-3.5 h-3.5 stroke-[2.5]" />
           </button>
 
           <button
@@ -990,7 +1009,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             title="Clear Chat History"
             className="p-1.5 rounded bg-white hover:bg-red-100 text-black border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-3.5 h-3.5" />
           </button>
 
           <button
@@ -998,7 +1017,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             title="Close Assistant"
             className="p-1.5 rounded bg-white hover:bg-red-400 text-black border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer"
           >
-            <X className="w-4 h-4 stroke-[3]" />
+            <X className="w-3.5 h-3.5 stroke-[3]" />
           </button>
         </div>
       </div>
@@ -1257,22 +1276,28 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
                 type="password"
                 value={apiKey}
                 onChange={(e) => handleApiKeyChange(e.target.value)}
-                onBlur={() => {
-                  if (apiKey.trim()) {
-                    fetchEndpointModels(selectedProvider, apiKey.trim(), customBaseUrl || undefined);
-                  }
-                }}
                 placeholder={`Enter ${currentProvider.envKeyName} (or leave empty if set in server env)`}
                 className="w-full bg-white border-2 border-black p-2 font-mono text-xs rounded shadow-[2px_2px_0px_#000] outline-none"
               />
               <button
                 type="button"
-                onClick={() => fetchEndpointModels(selectedProvider, apiKey.trim(), customBaseUrl || undefined)}
+                onClick={handleSaveApiKey}
                 disabled={isLoadingModels}
-                title="Fetch models with this API key"
-                className="neo-btn bg-[#00f0ff] text-black px-2.5 py-2 text-[10px] font-black rounded border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer flex-shrink-0 disabled:opacity-50"
+                title="Save API Key to browser storage"
+                className={`neo-btn px-3 py-2 text-[10px] font-black rounded border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer flex-shrink-0 transition-colors flex items-center gap-1 ${
+                  isKeySaved
+                    ? "bg-[#22c55e] text-black"
+                    : "bg-[#ffe600] hover:bg-[#ffd700] text-black"
+                } disabled:opacity-50`}
               >
-                Fetch
+                {isKeySaved ? (
+                  <>
+                    <Check className="w-3 h-3 stroke-[3]" />
+                    <span>Saved!</span>
+                  </>
+                ) : (
+                  <span>Save</span>
+                )}
               </button>
             </div>
           </div>
@@ -1297,20 +1322,20 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
       )}
 
       {/* 3. Live Context Ribbon */}
-      <div className="px-3 py-2 bg-white border-b-2 border-black flex items-center justify-between text-xs select-none">
-        <div className="flex items-center gap-2 overflow-hidden">
+      <div className="px-3 py-1.5 bg-white border-b-2 border-black flex items-center justify-between text-xs select-none shrink-0 min-w-0">
+        <div className="flex items-center gap-1.5 overflow-hidden min-w-0 mr-2">
           <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
           <div className="truncate font-mono text-[11px]">
             <span className="font-black text-black">
               {context.languageName || "No Language"}
             </span>
-            <span className="text-neutral-500 mx-1.5">•</span>
+            <span className="text-neutral-500 mx-1">•</span>
             <span className="text-neutral-600 font-bold">{lineCount} lines</span>
             {hasErrors && (
               <>
-                <span className="text-neutral-500 mx-1.5">•</span>
+                <span className="text-neutral-500 mx-1">•</span>
                 <span className="bg-[#ff5277] text-black border border-black text-[9px] font-black px-1.5 py-0.2 rounded shadow-[1px_1px_0px_#000]">
-                  ERROR ATTACHED
+                  ERROR
                 </span>
               </>
             )}
@@ -1359,11 +1384,11 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
       )}
 
       {/* 4. Quick Prompt Action Buttons */}
-      <div className="px-3 py-2 bg-neutral-100 border-b-2 border-black flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+      <div className="px-2.5 py-1.5 bg-neutral-100 border-b-2 border-black flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0 min-w-0">
         <button
           onClick={() => handleQuickAction("explain")}
           disabled={isGenerating}
-          className="neo-btn bg-white hover:bg-[#ffe600] text-black px-2.5 py-1 rounded text-[11px] font-black border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center gap-1 flex-shrink-0 cursor-pointer disabled:opacity-50"
+          className="neo-btn bg-white hover:bg-[#ffe600] text-black px-2 py-1 rounded text-[11px] font-black border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center gap-1 flex-shrink-0 cursor-pointer disabled:opacity-50"
         >
           <Zap className="w-3 h-3 fill-[#ffe600]" />
           <span>Explain</span>
@@ -1372,7 +1397,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
         <button
           onClick={() => handleQuickAction("debug")}
           disabled={isGenerating}
-          className={`neo-btn px-2.5 py-1 rounded text-[11px] font-black border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center gap-1 flex-shrink-0 cursor-pointer disabled:opacity-50 ${
+          className={`neo-btn px-2 py-1 rounded text-[11px] font-black border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center gap-1 flex-shrink-0 cursor-pointer disabled:opacity-50 ${
             hasErrors
               ? "bg-[#ff5277] text-black hover:bg-red-400 animate-pulse"
               : "bg-white hover:bg-red-50 text-black"
@@ -1385,7 +1410,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
         <button
           onClick={() => handleQuickAction("optimize")}
           disabled={isGenerating}
-          className="neo-btn bg-white hover:bg-[#00f0ff] text-black px-2.5 py-1 rounded text-[11px] font-black border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center gap-1 flex-shrink-0 cursor-pointer disabled:opacity-50"
+          className="neo-btn bg-white hover:bg-[#00f0ff] text-black px-2 py-1 rounded text-[11px] font-black border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center gap-1 flex-shrink-0 cursor-pointer disabled:opacity-50"
         >
           <LineChart className="w-3 h-3" />
           <span>Optimize</span>
@@ -1394,7 +1419,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
         <button
           onClick={() => handleQuickAction("visual")}
           disabled={isGenerating}
-          className="neo-btn bg-white hover:bg-purple-100 text-black px-2.5 py-1 rounded text-[11px] font-black border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center gap-1 flex-shrink-0 cursor-pointer disabled:opacity-50"
+          className="neo-btn bg-white hover:bg-purple-100 text-black px-2 py-1 rounded text-[11px] font-black border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center gap-1 flex-shrink-0 cursor-pointer disabled:opacity-50"
         >
           <Code2 className="w-3 h-3 text-purple-600" />
           <span>Visual Trace</span>
@@ -1415,7 +1440,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             )}
 
             <div
-              className={`max-w-[85%] rounded-lg p-3 border-2 border-black shadow-[3px_3px_0px_#000] text-sm ${
+              className={`max-w-[88%] min-w-0 break-words rounded-lg p-2.5 sm:p-3 border-2 border-black shadow-[2px_2px_0px_#000] text-sm box-border ${
                 msg.role === "user"
                   ? "bg-[#ffe600] text-black font-medium"
                   : "bg-white text-neutral-900"
@@ -1450,7 +1475,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
       </div>
 
       {/* 6. Input Area */}
-      <div className="p-3 bg-white border-t-3 border-black">
+      <div className="p-2.5 bg-white border-t-[2.5px] border-black shrink-0 min-w-0">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -1467,15 +1492,15 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             placeholder={`Ask Devnix AI about your ${
               context.languageName || "code"
             }... (Shift+Enter for newline)`}
-            className="w-full bg-[#fbfbfa] text-black placeholder:text-neutral-400 border-2 border-black rounded p-2.5 pr-20 text-xs font-mono outline-none shadow-[2px_2px_0px_#000] resize-none focus:bg-white focus:shadow-[3px_3px_0px_#000]"
+            className="w-full bg-[#fbfbfa] text-black placeholder:text-neutral-400 border-2 border-black rounded p-2 pr-18 text-xs font-mono outline-none shadow-[1.5px_1.5px_0px_#000] resize-none focus:bg-white focus:shadow-[2px_2px_0px_#000] box-border"
           />
 
-          <div className="absolute right-2 bottom-3 flex items-center gap-1.5">
+          <div className="absolute right-2 bottom-2.5 flex items-center gap-1">
             {isGenerating ? (
               <button
                 type="button"
                 onClick={handleStop}
-                className="neo-btn bg-[#ff5277] text-black hover:bg-red-400 px-2.5 py-1 text-xs font-black rounded border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center gap-1 cursor-pointer"
+                className="neo-btn bg-[#ff5277] text-black hover:bg-red-400 px-2 py-1 text-xs font-black rounded border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center gap-1 cursor-pointer"
               >
                 <Square className="w-3 h-3 fill-black text-black" />
                 <span>STOP</span>
@@ -1484,7 +1509,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
               <button
                 type="submit"
                 disabled={!input.trim()}
-                className="neo-btn bg-[#00f0ff] text-black hover:bg-cyan-300 disabled:opacity-40 px-3 py-1 text-xs font-black rounded border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center gap-1 cursor-pointer"
+                className="neo-btn bg-[#00f0ff] text-black hover:bg-cyan-300 disabled:opacity-40 px-2.5 py-1 text-xs font-black rounded border-2 border-black shadow-[1.5px_1.5px_0px_#000] flex items-center gap-1 cursor-pointer"
               >
                 <span>SEND</span>
                 <Send className="w-3 h-3 stroke-[2.5]" />
@@ -1493,9 +1518,9 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
           </div>
         </form>
 
-        <div className="flex items-center justify-between text-[10px] text-neutral-500 font-bold mt-1.5 px-0.5">
-          <span>Engine: {currentProvider.name}</span>
-          <span>Press Enter ↵ to send</span>
+        <div className="flex items-center justify-between text-[10px] text-neutral-500 font-bold mt-1 px-0.5 min-w-0">
+          <span className="truncate mr-2">Engine: {currentProvider.name}</span>
+          <span className="shrink-0">Press Enter ↵ to send</span>
         </div>
       </div>
     </aside>

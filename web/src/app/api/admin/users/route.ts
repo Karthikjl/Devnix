@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
-    const { email, username, displayName, password, role } = await req.json();
+    const { email, username, displayName, password, role, mustResetPassword } = await req.json();
 
     const newUser = registerUser({
       email,
@@ -65,10 +65,15 @@ export async function POST(req: NextRequest) {
       isAdminCreated: true,
     });
 
+    const db = getDb();
     if (role && (role === "ADMIN" || role === "USER")) {
-      const db = getDb();
       db.prepare("UPDATE users SET role = ? WHERE id = ?").run(role, newUser.id);
       newUser.role = role;
+    }
+
+    if (typeof mustResetPassword === "boolean") {
+      db.prepare("UPDATE users SET mustResetPassword = ? WHERE id = ?").run(mustResetPassword ? 1 : 0, newUser.id);
+      newUser.mustResetPassword = mustResetPassword;
     }
 
     return NextResponse.json({ success: true, user: newUser });

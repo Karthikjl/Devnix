@@ -84,6 +84,49 @@ function initDb(): DatabaseSync {
     );
   `);
 
+  // 4. User Workspace Snippets Table (Persists code & stdin per language)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_snippets (
+      userId TEXT NOT NULL,
+      languageId INTEGER NOT NULL,
+      code TEXT NOT NULL,
+      stdin TEXT DEFAULT '',
+      updatedAt INTEGER NOT NULL,
+      PRIMARY KEY (userId, languageId),
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 5. User Preferences Table (Theme, Split Widths, Active Lang/Mode)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      userId TEXT PRIMARY KEY,
+      selectedLanguageId INTEGER DEFAULT 71,
+      theme TEXT DEFAULT 'vs-dark',
+      mode TEXT DEFAULT 'interactive',
+      editorSplitPercent REAL DEFAULT 50,
+      panel1Percent REAL DEFAULT 36,
+      panel2Percent REAL DEFAULT 32,
+      isAiPanelOpen INTEGER DEFAULT 1,
+      updatedAt INTEGER NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
+  // 6. User AI Settings Table (Provider, Base URL, Models, Encrypted Keys, Chat History)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_ai_settings (
+      userId TEXT PRIMARY KEY,
+      provider TEXT DEFAULT 'gemini',
+      customBaseUrl TEXT DEFAULT '',
+      modelsJson TEXT DEFAULT '{}',
+      encryptedKeysJson TEXT DEFAULT '{}',
+      chatHistoryJson TEXT DEFAULT '[]',
+      updatedAt INTEGER NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
   // Seed default settings if not exists
   const seedDefaults: Record<string, string> = {
     selfSignupEnabled: "true",

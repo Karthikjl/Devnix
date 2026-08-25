@@ -315,12 +315,44 @@ export default function DevnixStudio() {
     } catch {}
   }, []);
 
+  // Workspace Sync to Database for authenticated users
+  const syncWorkspaceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const triggerWorkspaceSync = useCallback(
+    (payload: {
+      snippet?: { languageId: number; code: string; stdin: string };
+      preferences?: Partial<{
+        selectedLanguageId: number;
+        theme: string;
+        mode: string;
+        editorSplitPercent: number;
+        panel1Percent: number;
+        panel2Percent: number;
+        isAiPanelOpen: boolean;
+      }>;
+    }) => {
+      if (!currentUser) return;
+      if (syncWorkspaceTimerRef.current) clearTimeout(syncWorkspaceTimerRef.current);
+      syncWorkspaceTimerRef.current = setTimeout(async () => {
+        try {
+          await fetch("/api/user/workspace", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        } catch {}
+      }, 500);
+    },
+    [currentUser]
+  );
+
   const handleToggleAiPanel = () => {
     setIsAiPanelOpen((prev) => {
       const next = !prev;
       try {
         localStorage.setItem("devnix_ai_panel_open", String(next));
       } catch {}
+      triggerWorkspaceSync({ preferences: { isAiPanelOpen: next } });
       return next;
     });
   };
@@ -382,6 +414,13 @@ export default function DevnixStudio() {
           localStorage.setItem("devnix_panel1_width", String(panel1Percent));
           localStorage.setItem("devnix_panel2_width", String(panel2Percent));
         } catch {}
+        triggerWorkspaceSync({
+          preferences: {
+            editorSplitPercent,
+            panel1Percent,
+            panel2Percent,
+          },
+        });
       }
     };
 
@@ -391,7 +430,7 @@ export default function DevnixStudio() {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [editorSplitPercent, panel1Percent, panel2Percent, isAiPanelOpen]);
+  }, [editorSplitPercent, panel1Percent, panel2Percent, isAiPanelOpen, triggerWorkspaceSync]);
 
   // Load saved preferences and language-wise code on client mount
   useEffect(() => {
@@ -461,24 +500,113 @@ export default function DevnixStudio() {
     }
   }, [terminalLogs]);
 
-  // Handle Code Change with Auto-Save
+  // Hydrate workspace from database when user is authenticated
+  useEffect(() => {
+    if (!currentUser) return;
+    fetch("/api/user/workspace")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.authenticated) {
+          // 1. Hydrate Snippets
+          if (Array.isArray(data.snippets) && data.snippets.length > 0) {
+            data.snippets.forEach((snip: { languageId: number; code: string; stdin: string }) => {
+              try {
+                localStorage.setItem(`devnix_code_${snip.languageId}`, snip.code);
+                localStorage.setItem(`devnix_stdin_${snip.languageId}`, snip.stdin);
+              } catch {}
+            });
+          }
+
+          // 2. Hydrate Preferences
+          if (data.preferences) {
+            const p = data.preferences;
+            if (p.theme) {
+              setCurrentTheme(p.theme);
+              try {
+                localStorage.setItem("devnix_theme", p.theme);
+              } catch {}
+            }
+            if (p.mode) {
+              setExecutionMode(p.mode as any);
+              try {
+                localStorage.setItem("devnix_mode", p.mode);
+              } catch {}
+            }
+            if (typeof p.editorSplitPercent === "number") {
+              setEditorSplitPercent(p.editorSplitPercent);
+              try {
+                localStorage.setItem("devnix_editor_split", String(p.editorSplitPercent));
+              } catch {}
+            }
+            if (typeof p.panel1Percent === "number") {
+              setPanel1Percent(p.panel1Percent);
+              try {
+                localStorage.setItem("devnix_panel1_width", String(p.panel1Percent));
+              } catch {}
+            }
+            if (typeof p.panel2Percent === "number") {
+              setPanel2Percent(p.panel2Percent);
+              try {
+                localStorage.setItem("devnix_panel2_width", String(p.panel2Percent));
+              } catch {}
+            }
+            if (typeof p.isAiPanelOpen === "boolean") {
+              setIsAiPanelOpen(p.isAiPanelOpen);
+              try {
+                localStorage.setItem("devnix_ai_panel_open", String(p.isAiPanelOpen));
+              } catch {}
+            }
+
+            if (p.selectedLanguageId) {
+              const lang = SUPPORTED_LANGUAGES.find((l) => l.id === p.selectedLanguageId);
+              if (lang) {
+                setSelectedLanguage(lang);
+                selectedLanguageRef.current = lang;
+                try {
+                  localStorage.setItem("devnix_selected_lang_id", String(lang.id));
+                } catch {}
+
+                const matchingSnippet = data.snippets?.find((s: any) => s.languageId === lang.id);
+                const codeToSet = matchingSnippet ? matchingSnippet.code : lang.defaultCode;
+                setCode(codeToSet);
+                if (editorRef.current) {
+                  editorRef.current.setValue(codeToSet);
+                }
+                if (matchingSnippet) {
+                  setStdin(matchingSnippet.stdin || "");
+                }
+              }
+            }
+          }
+        }
+      })
+      .catch(() => {});
+  }, [currentUser]);
+
+  // Handle Code Change with Auto-Save and DB Sync
   const handleCodeChange = (newCode: string) => {
     setCode(newCode);
     if (isSwitchingLanguageRef.current) return;
+    const activeId = selectedLanguageRef.current?.id || selectedLanguage.id;
     try {
-      const activeId = selectedLanguageRef.current?.id || selectedLanguage.id;
       localStorage.setItem(`devnix_code_${activeId}`, newCode);
     } catch {}
+    triggerWorkspaceSync({
+      snippet: { languageId: activeId, code: newCode, stdin },
+    });
   };
 
-  // Handle Stdin Change with Auto-Save
+  // Handle Stdin Change with Auto-Save and DB Sync
   const handleStdinChange = (newStdin: string) => {
     setStdin(newStdin);
     if (isSwitchingLanguageRef.current) return;
+    const activeId = selectedLanguageRef.current?.id || selectedLanguage.id;
     try {
-      const activeId = selectedLanguageRef.current?.id || selectedLanguage.id;
       localStorage.setItem(`devnix_stdin_${activeId}`, newStdin);
     } catch {}
+    triggerWorkspaceSync({
+      snippet: { languageId: activeId, code, stdin: newStdin },
+    });
   };
 
   // Setup Monaco themes
@@ -600,6 +728,7 @@ export default function DevnixStudio() {
     setResult(null);
     setTerminalLogs([]);
     setIsLangOpen(false);
+    triggerWorkspaceSync({ preferences: { selectedLanguageId: lang.id } });
 
     setTimeout(() => {
       isSwitchingLanguageRef.current = false;
@@ -611,6 +740,7 @@ export default function DevnixStudio() {
     try {
       localStorage.setItem("devnix_theme", themeId);
     } catch {}
+    triggerWorkspaceSync({ preferences: { theme: themeId } });
     setIsThemeOpen(false);
   };
 
@@ -619,6 +749,7 @@ export default function DevnixStudio() {
     try {
       localStorage.setItem("devnix_mode", mode);
     } catch {}
+    triggerWorkspaceSync({ preferences: { mode } });
   };
 
   const handleResetCode = () => {
@@ -1814,6 +1945,7 @@ export default function DevnixStudio() {
             <AiAssistantPanel
               embedded={true}
               isOpen={true}
+              currentUser={currentUser}
               onClose={handleToggleAiPanel}
               context={{
                 languageName: selectedLanguage.label,
@@ -1842,6 +1974,7 @@ export default function DevnixStudio() {
         <AiAssistantPanel
           embedded={false}
           isOpen={isAiPanelOpen}
+          currentUser={currentUser}
           onClose={handleToggleAiPanel}
           context={{
             languageName: selectedLanguage.label,

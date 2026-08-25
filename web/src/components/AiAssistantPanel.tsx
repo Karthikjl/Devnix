@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { SafeUser } from "@/lib/auth";
 import {
   Sparkles,
   X,
@@ -41,6 +42,7 @@ interface AiAssistantPanelProps {
   onApplyCode: (newCode: string) => void;
   onHighlightLine?: (lineNumber: number | null) => void;
   embedded?: boolean;
+  currentUser?: SafeUser | null;
 }
 
 export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
@@ -50,6 +52,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   onApplyCode,
   onHighlightLine,
   embedded = false,
+  currentUser,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -289,6 +292,86 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
     } catch {}
   }, []);
 
+  // Database Cloud Sync for AI Settings & Encrypted Credentials
+  const syncAiTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const triggerAiSync = useCallback(
+    (payload: {
+      provider?: string;
+      customBaseUrl?: string;
+      models?: Record<string, string>;
+      apiKeys?: Record<string, string>;
+      chatHistory?: ChatMessage[];
+    }) => {
+      if (!currentUser) return;
+      if (syncAiTimerRef.current) clearTimeout(syncAiTimerRef.current);
+      syncAiTimerRef.current = setTimeout(async () => {
+        try {
+          await fetch("/api/user/workspace", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ aiSettings: payload }),
+          });
+        } catch {}
+      }, 500);
+    },
+    [currentUser]
+  );
+
+  // Hydrate AI settings & chat history from DB when user is authenticated
+  useEffect(() => {
+    if (!currentUser) return;
+    fetch("/api/user/workspace")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.authenticated && data.aiSettings) {
+          const ai = data.aiSettings;
+          if (ai.provider && AI_PROVIDERS[ai.provider]) {
+            setSelectedProvider(ai.provider);
+            try {
+              localStorage.setItem("devnix_ai_provider", ai.provider);
+            } catch {}
+          }
+          if (typeof ai.customBaseUrl === "string") {
+            setCustomBaseUrl(ai.customBaseUrl);
+            try {
+              localStorage.setItem("devnix_ai_base_url", ai.customBaseUrl);
+            } catch {}
+          }
+          if (ai.apiKeys && typeof ai.apiKeys === "object") {
+            setApiKeys((prev) => {
+              const merged = { ...prev, ...ai.apiKeys };
+              try {
+                localStorage.setItem("devnix_ai_keys", JSON.stringify(merged));
+              } catch {}
+              return merged;
+            });
+            if (ai.provider && ai.apiKeys[ai.provider]) {
+              setApiKey(ai.apiKeys[ai.provider]);
+            }
+          }
+          if (ai.models && typeof ai.models === "object") {
+            setProviderModels((prev) => {
+              const merged = { ...prev, ...ai.models };
+              try {
+                localStorage.setItem("devnix_ai_models", JSON.stringify(merged));
+              } catch {}
+              return merged;
+            });
+            if (ai.provider && ai.models[ai.provider]) {
+              setSelectedModel(ai.models[ai.provider]);
+            }
+          }
+          if (Array.isArray(ai.chatHistory) && ai.chatHistory.length > 0) {
+            setMessages(ai.chatHistory);
+            try {
+              localStorage.setItem("devnix_ai_history", JSON.stringify(ai.chatHistory));
+            } catch {}
+          }
+        }
+      })
+      .catch(() => {});
+  }, [currentUser]);
+
   // Save settings when changed
   useEffect(() => {
     try {
@@ -296,6 +379,16 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
       localStorage.setItem("devnix_ai_base_url", customBaseUrl);
     } catch {}
   }, [selectedProvider, customBaseUrl]);
+
+  // Sync chat history to localStorage & DB
+  useEffect(() => {
+    if (messages.length > 0) {
+      try {
+        localStorage.setItem("devnix_ai_history", JSON.stringify(messages));
+      } catch {}
+      triggerAiSync({ chatHistory: messages });
+    }
+  }, [messages, triggerAiSync]);
 
   // Handle Model change (saved per provider)
   const handleModelChange = (newModel: string, forProvider?: string) => {
@@ -309,6 +402,9 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
         localStorage.setItem("devnix_ai_model", newModel);
       } catch {}
       return updated;
+    });
+    triggerAiSync({
+      models: { [targetProv]: newModel },
     });
   };
 
@@ -325,7 +421,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
     });
   };
 
-  // Save API Key strictly to localStorage without triggering network requests
+  // Save API Key strictly to localStorage and DB without triggering network requests
   const handleSaveApiKey = () => {
     const trimmedKey = apiKey.trim();
     setApiKeys((prev) => {
@@ -341,6 +437,10 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
         localStorage.setItem("devnix_ai_base_url", customBaseUrl);
       } catch {}
     }
+    triggerAiSync({
+      apiKeys: { [selectedProvider]: trimmedKey },
+      customBaseUrl: customBaseUrl || undefined,
+    });
     setIsKeySaved(true);
     setTimeout(() => setIsKeySaved(false), 1500);
   };
@@ -365,20 +465,29 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
     if (prov && provKey !== "custom") {
       setCustomBaseUrl(prov.baseUrl);
     }
+    triggerAiSync({
+      provider: provKey,
+    });
     // Fetch live models from the actual endpoint
     fetchEndpointModels(provKey, provApiKey || undefined, targetBaseUrl || undefined, provModel);
   };
 
   const handleClearHistory = () => {
-    setMessages([
+    const freshMessages: ChatMessage[] = [
       {
         id: `welcome_${Date.now()}`,
         role: "assistant",
         content: `👋 Chat cleared. Ready for your **${context.languageName || "code"}** questions!`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       },
-    ]);
-    localStorage.removeItem("devnix_ai_history");
+    ];
+    setMessages(freshMessages);
+    try {
+      localStorage.removeItem("devnix_ai_history");
+    } catch {}
+    triggerAiSync({
+      chatHistory: freshMessages,
+    });
   };
 
   const handleCopyText = (text: string, id: string) => {

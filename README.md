@@ -131,16 +131,32 @@ cd Devnix
 
 ---
 
-### 🐳 Quick Start (One Command with Docker Compose)
+### 🐳 Quick Start (One Command Multi-Arch Docker Compose)
 
-To start the **entire project** (Next.js Web Studio + Judge0 Server + Workers + PostgreSQL + Redis):
+Devnix includes smart multi-architecture support that runs natively on **both ARM64 (Oracle, AWS Graviton, Apple Silicon, Raspberry Pi)** and **x86_64 / AMD64 (Intel & AMD)**:
 
+**On Linux / macOS:**
 ```bash
-docker compose up -d
+chmod +x ./start.sh
+./start.sh
 ```
 
+**On Windows (PowerShell):**
+```powershell
+.\start.ps1
+```
+
+Or start directly with Docker Compose:
+- **Universal Mode (ARM64 & x86_64)**:
+  ```bash
+  docker compose up -d
+  ```
+- **Full Stack Mode with Judge0 (x86_64 only)**:
+  ```bash
+  docker compose --profile full up -d
+  ```
+
 - **Devnix Web Studio**: `http://localhost:3000`
-- **Judge0 Execution API**: `http://localhost:2358`
 
 To view logs:
 ```bash

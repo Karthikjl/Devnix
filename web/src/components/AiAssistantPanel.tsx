@@ -12,7 +12,7 @@ import {
   Copy,
   Check,
   ArrowDownToLine,
-  Settings2,
+  Settings,
   Trash2,
   Code2,
   Zap,
@@ -24,6 +24,7 @@ import {
   ChevronDown,
   Search,
   GripVertical,
+  ArrowDown,
 } from "lucide-react";
 import { AI_PROVIDERS, CodeContext } from "@/lib/aiService";
 import { VisualTracePlayer, TraceData, TraceStep } from "@/components/VisualTracePlayer";
@@ -163,8 +164,36 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   }, []);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const isAutoScrollingRef = useRef(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleChatScroll = () => {
+    if (isAutoScrollingRef.current) return;
+    if (!chatContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
+    // Show button when scrolled up more than 100px from bottom
+    const isScrolledUp = scrollHeight - scrollTop - clientHeight > 100;
+    setShowScrollBottom(isScrolledUp);
+  };
+
+  const scrollToBottom = () => {
+    isAutoScrollingRef.current = true;
+    setShowScrollBottom(false);
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    setTimeout(() => {
+      isAutoScrollingRef.current = false;
+    }, 600);
+  };
 
   // Dynamic model fetcher directly from provider endpoint
   const fetchEndpointModels = async (
@@ -292,6 +321,27 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
       }
     } catch {}
   }, []);
+
+  // Auto-scroll chat console to bottom on page refresh, initial mount, and new messages
+  useEffect(() => {
+    if (messages.length > 0) {
+      const scrollToBottomImmediate = () => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        } else {
+          messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+        }
+      };
+
+      scrollToBottomImmediate();
+      const t1 = setTimeout(scrollToBottomImmediate, 50);
+      const t2 = setTimeout(scrollToBottomImmediate, 200);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+  }, [messages.length, isOpen]);
 
   // Database Cloud Sync for AI Settings & Encrypted Credentials
   const syncAiTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1161,16 +1211,18 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
 
         <div className="flex items-center gap-1 shrink-0 ml-1">
           <button
+            type="button"
             onClick={() => setShowSettings(!showSettings)}
-            title="Configure AI Provider & API Key"
+            title="AI Provider & Model Settings"
             className={`p-1.5 rounded border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer transition-colors ${
-              showSettings ? "bg-black text-[#ffe600]" : "bg-white hover:bg-neutral-100 text-black font-black"
+              showSettings ? "bg-[#ffe600] text-black" : "bg-white hover:bg-neutral-100 text-black font-black"
             }`}
           >
-            <Settings2 className="w-3.5 h-3.5 stroke-[2.5]" />
+            <Settings className="w-3.5 h-3.5 stroke-[2.5]" />
           </button>
 
           <button
+            type="button"
             onClick={handleClearHistory}
             title="Clear Chat History"
             className="p-1.5 rounded bg-white hover:bg-red-100 text-black border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer"
@@ -1179,6 +1231,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
           </button>
 
           <button
+            type="button"
             onClick={onClose}
             title="Close Assistant"
             className="p-1.5 rounded bg-white hover:bg-red-400 text-black border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer"
@@ -1195,9 +1248,20 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             <span className="flex items-center gap-1.5 text-black">
               <KeyRound className="w-4 h-4" /> AI Provider Configuration
             </span>
-            <span className="text-[10px] bg-[#ffe600] text-black border border-black font-black px-1.5 py-0.2 rounded shadow-[1px_1px_0px_#000]">
-              Multi-Engine
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] bg-white text-black border border-black font-black px-1.5 py-0.2 rounded shadow-[1px_1px_0px_#000]">
+                Multi-Engine
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowSettings(false)}
+                title="Close Configuration Panel"
+                className="neo-btn bg-[#ffe600] hover:bg-yellow-300 text-black text-[10px] font-black px-2.5 py-0.5 rounded border-2 border-black shadow-[1.5px_1.5px_0px_#000] cursor-pointer flex items-center gap-1"
+              >
+                <X className="w-3 h-3 stroke-[3]" />
+                <span>Close</span>
+              </button>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -1593,51 +1657,72 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
       </div>
 
       {/* 5. Messages Feed */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#f8f8f7]">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex gap-2.5 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            {msg.role === "assistant" && (
-              <div className="w-7 h-7 rounded bg-black text-[#00f0ff] flex items-center justify-center border-2 border-black flex-shrink-0 mt-0.5 shadow-[1.5px_1.5px_0px_#000]">
-                <Bot className="w-4 h-4" />
-              </div>
-            )}
-
+      <div className="relative flex-1 min-h-0 flex flex-col">
+        <div
+          ref={chatContainerRef}
+          onScroll={handleChatScroll}
+          className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#f8f8f7]"
+        >
+          {messages.map((msg) => (
             <div
-              className={`max-w-[88%] min-w-0 break-words rounded-lg p-2.5 sm:p-3 border-2 border-black shadow-[2px_2px_0px_#000] text-sm box-border ${
-                msg.role === "user"
-                  ? "bg-[#ffe600] text-black font-medium"
-                  : "bg-white text-neutral-900"
-              }`}
+              key={msg.id}
+              className={`flex gap-2.5 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
-              <div className="flex items-center justify-between gap-2 mb-1.5 pb-1 border-b border-black/10 text-[10px] font-bold text-neutral-600">
-                <span>{msg.role === "user" ? "You" : `Devnix AI (${selectedModel})`}</span>
-                <span className="font-mono">{msg.timestamp}</span>
+              {msg.role === "assistant" && (
+                <div className="w-7 h-7 rounded bg-black text-[#00f0ff] flex items-center justify-center border-2 border-black flex-shrink-0 mt-0.5 shadow-[1.5px_1.5px_0px_#000]">
+                  <Bot className="w-4 h-4" />
+                </div>
+              )}
+
+              <div
+                className={`max-w-[88%] min-w-0 break-words rounded-lg p-2.5 sm:p-3 border-2 border-black shadow-[2px_2px_0px_#000] text-sm box-border ${
+                  msg.role === "user"
+                    ? "bg-[#ffe600] text-black font-medium"
+                    : "bg-white text-neutral-900"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-1.5 pb-1 border-b border-black/10 text-[10px] font-bold text-neutral-600">
+                  <span>{msg.role === "user" ? "You" : `Devnix AI (${selectedModel})`}</span>
+                  <span className="font-mono">{msg.timestamp}</span>
+                </div>
+
+                {renderMessageContent(msg.content, msg.id)}
               </div>
 
-              {renderMessageContent(msg.content, msg.id)}
+              {msg.role === "user" && (
+                <div className="w-7 h-7 rounded bg-[#ffe600] text-black flex items-center justify-center border-2 border-black flex-shrink-0 mt-0.5 shadow-[1.5px_1.5px_0px_#000]">
+                  <User className="w-4 h-4 stroke-[2.5]" />
+                </div>
+              )}
             </div>
+          ))}
 
-            {msg.role === "user" && (
-              <div className="w-7 h-7 rounded bg-[#ffe600] text-black flex items-center justify-center border-2 border-black flex-shrink-0 mt-0.5 shadow-[1.5px_1.5px_0px_#000]">
-                <User className="w-4 h-4 stroke-[2.5]" />
+          {isGenerating && (
+            <div className="flex gap-2.5 items-center text-xs font-bold text-neutral-600">
+              <div className="w-7 h-7 rounded bg-black text-[#00f0ff] flex items-center justify-center border-2 border-black shadow-[1.5px_1.5px_0px_#000] animate-spin">
+                <Sparkles className="w-3.5 h-3.5" />
               </div>
-            )}
-          </div>
-        ))}
-
-        {isGenerating && (
-          <div className="flex gap-2.5 items-center text-xs font-bold text-neutral-600">
-            <div className="w-7 h-7 rounded bg-black text-[#00f0ff] flex items-center justify-center border-2 border-black shadow-[1.5px_1.5px_0px_#000] animate-spin">
-              <Sparkles className="w-3.5 h-3.5" />
+              <span className="animate-pulse">Thinking & analyzing code...</span>
             </div>
-            <span className="animate-pulse">Thinking & analyzing code...</span>
-          </div>
-        )}
+          )}
 
-        <div ref={messagesEndRef} />
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Floating Go Down / Scroll to Bottom Button */}
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          title="Scroll to latest messages"
+          className={`absolute right-4 bottom-3 z-30 neo-btn bg-[#ffe600] hover:bg-yellow-300 active:bg-yellow-400 text-black px-2.5 py-1.5 rounded-full border-2 border-black shadow-[2px_2px_0px_#000] cursor-pointer flex items-center gap-1.5 text-xs font-black transition-all duration-200 ease-out active:translate-x-0.5 active:translate-y-0.5 ${
+            showScrollBottom
+              ? "opacity-100 translate-y-0 pointer-events-auto scale-100"
+              : "opacity-0 translate-y-2 pointer-events-none scale-95"
+          }`}
+        >
+          <ArrowDown className="w-3.5 h-3.5 stroke-[3]" />
+          <span className="text-[10px] tracking-tight">Bottom</span>
+        </button>
       </div>
 
       {/* 6. Input Area */}

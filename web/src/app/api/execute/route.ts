@@ -12,6 +12,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Normalize Windows CRLF -> LF for universal cross-platform compatibility
+    const cleanSourceCode = source_code.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const cleanStdin = typeof stdin === "string" ? stdin.replace(/\r\n/g, "\n").replace(/\r/g, "\n") : undefined;
+
     const judge0Url = process.env.JUDGE0_URL || "http://server:2358";
 
     // 1. Attempt execution via Judge0 API if online
@@ -24,8 +28,8 @@ export async function POST(req: NextRequest) {
         },
         body: JSON.stringify({
           language_id,
-          source_code,
-          stdin: stdin || undefined,
+          source_code: cleanSourceCode,
+          stdin: cleanStdin,
         }),
         signal: AbortSignal.timeout(6000),
       });
@@ -42,7 +46,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Execute directly inside the sandboxed native Docker Runner container
-    const result = executeInDockerContainer(language_id, source_code, stdin);
+    const result = executeInDockerContainer(language_id, cleanSourceCode, cleanStdin);
     return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json(

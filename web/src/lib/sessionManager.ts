@@ -6,6 +6,7 @@ import os from "os";
 interface ExecutionSession {
   id: string;
   process?: ChildProcess;
+  containerName?: string;
   cleanupFiles: string[];
   containerCleanupDir?: string;
   startTime: number;
@@ -67,7 +68,8 @@ export function createInteractiveSession(
       let compileCmd = "";
       let execArgs: string[] = [];
 
-      let codeToWrite = sourceCode;
+      // Ensure clean LF line endings across all platforms (Windows CRLF -> LF)
+      let codeToWrite = sourceCode.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
       // Handle TypeScript transpilation
       if (langId === 74) {
@@ -210,6 +212,7 @@ export function createInteractiveSession(
       const session: ExecutionSession = {
         id: sessionId,
         process: child,
+        containerName: workerContainer,
         cleanupFiles,
         containerCleanupDir,
         startTime: Date.now(),
@@ -267,7 +270,8 @@ export function sendInputToSession(sessionId: string, input: string): boolean {
   }
 
   try {
-    session.process.stdin.write(input + "\n");
+    const cleanInput = input.replace(/\r\n/g, "\n").replace(/\r/g, "");
+    session.process.stdin.write(cleanInput + "\n");
     return true;
   } catch {
     return false;
@@ -289,8 +293,8 @@ export function killSession(sessionId: string): boolean {
 function cleanupSession(sessionId: string) {
   const session = sessions.get(sessionId);
   if (session) {
-    if (session.containerCleanupDir) {
-      spawnSync("docker", ["exec", "judge0-workers-1", "rm", "-rf", `${session.containerCleanupDir}*`]);
+    if (session.containerCleanupDir && session.containerName) {
+      spawnSync("docker", ["exec", session.containerName, "rm", "-rf", `${session.containerCleanupDir}*`]);
     }
     for (const file of session.cleanupFiles) {
       if (fs.existsSync(file)) {

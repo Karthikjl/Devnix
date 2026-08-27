@@ -12,6 +12,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const cleanSourceCode = source_code.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({
@@ -19,7 +21,7 @@ export async function POST(req: NextRequest) {
         const success = createInteractiveSession(
           sessionId,
           language_id,
-          source_code,
+          cleanSourceCode,
           (chunk) => {
             try {
               controller.enqueue(

@@ -50,6 +50,10 @@ export function executeInDockerContainer(
   const uniqueId = `batch_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
   const containerDir = `/tmp/sandbox/${uniqueId}`;
 
+  // Ensure clean LF line endings across all platforms (Windows CRLF -> LF)
+  const normalizedCode = (sourceCode || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalizedStdin = stdin ? stdin.replace(/\r\n/g, "\n").replace(/\r/g, "\n") : "";
+
   try {
     spawnSync("docker", ["exec", "-i", container, "mkdir", "-p", containerDir], { encoding: "utf-8", timeout: 4000 });
 
@@ -65,10 +69,10 @@ export function executeInDockerContainer(
 
     if (languageId === 62) {
       // Java: detect class name
-      const classMatch = sourceCode.match(/public\s+class\s+([A-Za-z0-9_]+)/) || sourceCode.match(/class\s+([A-Za-z0-9_]+)/);
+      const classMatch = normalizedCode.match(/public\s+class\s+([A-Za-z0-9_]+)/) || normalizedCode.match(/class\s+([A-Za-z0-9_]+)/);
       const className = classMatch ? classMatch[1] : "Main";
       spawnSync("docker", ["exec", "-i", container, "sh", "-c", `cat > "${containerDir}/${className}.java"`], {
-        input: sourceCode,
+        input: normalizedCode,
         encoding: "utf-8",
         timeout: 4000,
       });
@@ -78,7 +82,7 @@ export function executeInDockerContainer(
       const ext = extMap[languageId] || "py";
       const filePath = `${containerDir}/prog.${ext}`;
       spawnSync("docker", ["exec", "-i", container, "sh", "-c", `cat > "${filePath}"`], {
-        input: sourceCode,
+        input: normalizedCode,
         encoding: "utf-8",
         timeout: 4000,
       });
@@ -146,7 +150,7 @@ export function executeInDockerContainer(
     // Run execution with Stdin
     const startTime = Date.now();
     const execRes = spawnSync("docker", ["exec", "-i", container, "sh", "-c", runCmd], {
-      input: stdin || "",
+      input: normalizedStdin,
       encoding: "utf-8",
       timeout: 15000,
     });

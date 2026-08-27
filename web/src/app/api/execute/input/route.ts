@@ -12,7 +12,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const success = sendInputToSession(sessionId, input);
+    const cleanInput = input.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const success = sendInputToSession(sessionId, cleanInput);
     return NextResponse.json({ success });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

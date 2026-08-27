@@ -15,21 +15,23 @@ import beautify from "js-beautify";
 export function formatCodeUniversal(rawCode: string, langIdOrName: string): string {
   if (!rawCode || !rawCode.trim()) return rawCode;
 
+  // Normalize CRLF to LF universally
+  const cleanCode = rawCode.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const lang = (langIdOrName || "").toLowerCase().trim();
 
   // 1. JSON
   if (lang === "json" || lang === "jsonc") {
     try {
-      return JSON.stringify(JSON.parse(rawCode), null, 4) + "\n";
+      return JSON.stringify(JSON.parse(cleanCode), null, 4) + "\n";
     } catch {
-      return beautify.js(rawCode, { indent_size: 4, space_in_empty_paren: true });
+      return beautify.js(cleanCode, { indent_size: 4, space_in_empty_paren: true });
     }
   }
 
   // 2. JavaScript & TypeScript
   if (lang.includes("javascript") || lang.includes("typescript") || lang === "js" || lang === "ts") {
     try {
-      return beautify.js(rawCode, {
+      return beautify.js(cleanCode, {
         indent_size: 4,
         space_in_empty_paren: false,
         brace_style: "collapse",
@@ -37,36 +39,36 @@ export function formatCodeUniversal(rawCode: string, langIdOrName: string): stri
         wrap_line_length: 120,
       });
     } catch {
-      return rawCode;
+      return cleanCode;
     }
   }
 
   // 3. HTML / XML
   if (lang.includes("html") || lang.includes("xml")) {
     try {
-      return beautify.html(rawCode, { indent_size: 4, end_with_newline: true });
+      return beautify.html(cleanCode, { indent_size: 4, end_with_newline: true });
     } catch {
-      return rawCode;
+      return cleanCode;
     }
   }
 
   // 4. CSS
   if (lang.includes("css")) {
     try {
-      return beautify.css(rawCode, { indent_size: 4, end_with_newline: true });
+      return beautify.css(cleanCode, { indent_size: 4, end_with_newline: true });
     } catch {
-      return rawCode;
+      return cleanCode;
     }
   }
 
   // 5. PHP (Dedicated PHP-Aware Formatter)
   if (lang.includes("php")) {
-    return formatPhpCode(rawCode);
+    return formatPhpCode(cleanCode);
   }
 
   // 6. Python (PEP-8 Indentation-Preserving Formatter)
   if (lang.includes("python") || lang === "py") {
-    return formatPythonCode(rawCode);
+    return formatPythonCode(cleanCode);
   }
 
   // 7. C, C++, Java, Rust, Go (C-Style Curly-Brace Languages)
@@ -78,11 +80,11 @@ export function formatCodeUniversal(rawCode: string, langIdOrName: string): stri
     lang.includes("rust") ||
     lang.includes("go")
   ) {
-    return formatCStyleCode(rawCode);
+    return formatCStyleCode(cleanCode);
   }
 
   // 8. Ruby / Bash / Script Fallback
-  return formatScriptCode(rawCode);
+  return formatScriptCode(cleanCode);
 }
 
 /**

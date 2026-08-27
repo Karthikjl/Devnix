@@ -331,7 +331,7 @@ function formatPythonCode(code: string): string {
     }
 
     // Normalize operators and commas in code part
-    let formattedCode = formatPythonLine(codePart);
+    const formattedCode = formatPythonLine(codePart);
 
     resultLines.push(`${indentStr}${formattedCode}${commentPart}`);
   }

@@ -83,6 +83,7 @@ export const AI_PROVIDERS: Record<string, AiProviderConfig> = {
 };
 
 export interface CodeContext {
+  languageId?: number | null;
   languageName?: string | null;
   languageVersion?: string | null;
   code?: string | null;

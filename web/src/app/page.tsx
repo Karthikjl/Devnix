@@ -235,17 +235,15 @@ export default function DevnixStudio() {
   const isSwitchingLanguageRef = useRef<boolean>(false);
   const activeTraceDecorationsRef = useRef<string[]>([]);
 
-  // Live Visual Trace Line Highlighter in Monaco Editor
-  const handleHighlightTraceLine = useCallback((lineNumber?: number | null) => {
+  // Live Visual Trace Line Highlighter in Monaco Editor (Strict Relevance & Code Guard)
+  const handleHighlightTraceLine = useCallback((lineNumber?: number | null, stepCode?: string | null) => {
     if (!editorRef.current || !monacoRef.current) return;
     const editor = editorRef.current;
     const monaco = monacoRef.current;
 
-    const currentEditorCode = editor.getValue();
-    const lineCount = currentEditorCode ? currentEditorCode.split("\n").length : 0;
-
-    // Strict Guard: If editor has no code or lineNumber is invalid / out of bounds, clear highlight immediately!
-    if (!currentEditorCode.trim() || !lineNumber || lineNumber < 1 || lineNumber > lineCount) {
+    const currentEditorCode = editor.getValue() || "";
+    // Guard 1: If editor is empty or lineNumber is null/undefined or < 1, clear yellow line immediately
+    if (!currentEditorCode.trim() || !lineNumber || lineNumber < 1) {
       activeTraceDecorationsRef.current = editor.deltaDecorations(
         activeTraceDecorationsRef.current,
         []
@@ -253,8 +251,53 @@ export default function DevnixStudio() {
       return;
     }
 
+    const lines = currentEditorCode.split("\n");
+    const lineCount = lines.length;
+
+    // Guard 2: If lineNumber is outside the total lines of the current editor code, clear yellow line
+    if (lineNumber > lineCount) {
+      activeTraceDecorationsRef.current = editor.deltaDecorations(
+        activeTraceDecorationsRef.current,
+        []
+      );
+      return;
+    }
+
+    // Guard 3: Target line must contain actual non-empty code
+    const targetLineText = (lines[lineNumber - 1] || "").trim();
+    if (!targetLineText) {
+      activeTraceDecorationsRef.current = editor.deltaDecorations(
+        activeTraceDecorationsRef.current,
+        []
+      );
+      return;
+    }
+
+    // Guard 4: Relevance check (if stepCode is provided, ensure line has meaningful correlation)
+    if (stepCode && stepCode.trim()) {
+      const cleanStep = stepCode.trim().toLowerCase().replace(/[#//;,\(\)\{\}\[\]"'\s]/g, "");
+      const cleanLine = targetLineText.toLowerCase().replace(/[#//;,\(\)\{\}\[\]"'\s]/g, "");
+
+      const stepTokens = stepCode
+        .toLowerCase()
+        .split(/[^a-zA-Z0-9_]+/)
+        .filter((t) => t.length >= 2 && !["def", "int", "let", "var", "const", "for", "while", "if", "return", "function", "true", "false"].includes(t));
+
+      const lineHasToken = stepTokens.length === 0 || stepTokens.some((tok) => targetLineText.toLowerCase().includes(tok));
+      const hasDirectOverlap = cleanLine.includes(cleanStep) || cleanStep.includes(cleanLine);
+
+      // If there's neither exact/substring overlap nor matching significant identifiers/tokens, don't show highlight
+      if (!hasDirectOverlap && !lineHasToken) {
+        activeTraceDecorationsRef.current = editor.deltaDecorations(
+          activeTraceDecorationsRef.current,
+          []
+        );
+        return;
+      }
+    }
+
     try {
-      editor.revealLineInCenter(lineNumber, 0);
+      editor.revealLineInCenterIfOutsideViewport(lineNumber, 0);
 
       const newDecorations = [
         {
@@ -268,7 +311,7 @@ export default function DevnixStudio() {
               position: monaco.editor.OverviewRulerLane.Full,
             },
             minimap: {
-              color: "#00f0ff",
+              color: "#ffe600",
               position: monaco.editor.MinimapPosition.Inline,
             },
           },
@@ -586,6 +629,12 @@ export default function DevnixStudio() {
   // Handle Code Change with Auto-Save and DB Sync
   const handleCodeChange = (newCode: string) => {
     setCode(newCode);
+    if (!newCode.trim() && editorRef.current) {
+      activeTraceDecorationsRef.current = editorRef.current.deltaDecorations(
+        activeTraceDecorationsRef.current,
+        []
+      );
+    }
     if (isSwitchingLanguageRef.current) return;
     const activeId = selectedLanguageRef.current?.id || selectedLanguage.id;
     try {
@@ -1948,6 +1997,7 @@ export default function DevnixStudio() {
               currentUser={currentUser}
               onClose={handleToggleAiPanel}
               context={{
+                languageId: selectedLanguage.id,
                 languageName: selectedLanguage.label,
                 languageVersion: selectedLanguage.version,
                 code: code,
@@ -1977,6 +2027,7 @@ export default function DevnixStudio() {
           currentUser={currentUser}
           onClose={handleToggleAiPanel}
           context={{
+            languageId: selectedLanguage.id,
             languageName: selectedLanguage.label,
             languageVersion: selectedLanguage.version,
             code: code,

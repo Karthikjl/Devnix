@@ -26,7 +26,8 @@ import {
   GripVertical,
 } from "lucide-react";
 import { AI_PROVIDERS, CodeContext } from "@/lib/aiService";
-import { VisualTracePlayer, TraceData } from "@/components/VisualTracePlayer";
+import { VisualTracePlayer, TraceData, TraceStep } from "@/components/VisualTracePlayer";
+import { generateGenericCodeTrace } from "@/lib/traceEngine";
 
 interface ChatMessage {
   id: string;
@@ -40,7 +41,7 @@ interface AiAssistantPanelProps {
   onClose: () => void;
   context: CodeContext;
   onApplyCode: (newCode: string) => void;
-  onHighlightLine?: (lineNumber: number | null) => void;
+  onHighlightLine?: (lineNumber: number | null, stepCode?: string | null) => void;
   embedded?: boolean;
   currentUser?: SafeUser | null;
 }
@@ -631,7 +632,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
   };
 
   // Quick Action Handler
-  const handleQuickAction = (actionType: "explain" | "debug" | "optimize" | "visual" | "docs") => {
+  const handleQuickAction = async (actionType: "explain" | "debug" | "optimize" | "visual" | "docs") => {
     let prompt = "";
     switch (actionType) {
       case "explain":
@@ -646,18 +647,71 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
         break;
       case "optimize":
         prompt = `How can I optimize this ${context.languageName || "code"} for maximum speed and minimal memory footprint? Provide an optimized alternative.`;
+        handleSendMessage(prompt);
         break;
-      case "visual":
-        if (context.code && context.code.trim()) {
-          prompt = `Please generate an interactive step-by-step visual trace of my current ${context.languageName || "code"} execution using the \`\`\`trace block format. Make sure step line numbers match my exact editor lines. If there are long loops (e.g. 50+ iterations), condense them into 5 to 8 key representative steps (initial state, first iterations, key condition branches, final step) rather than repeating hundreds of steps. Use my input/variables to explain each step clearly.`;
-        } else {
-          prompt = `My code editor is currently empty. Please provide a classic algorithm solution (such as Two Sum, Binary Search, or Valid Palindrome) in ${context.languageName || "Python"}, explain it, and generate a complete interactive step-by-step visual trace using the \`\`\`trace format with line numbers matching the code so I can step through and play it.`;
-        }
-        break;
+      case "visual": {
+        const userMsg: ChatMessage = {
+          id: `user_${Date.now()}`,
+          role: "user",
+          content: "⚡ Visualise step-by-step code execution",
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+
+        const currentCode = context.code || "n = 0\nwhile (n < 1000):\n    n += 1\n    print(n)";
+        const langId = context.languageId || 71;
+
+        // Fetch dynamic runtime execution trace from /api/trace
+        try {
+          const traceRes = await fetch("/api/trace", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              language_id: langId,
+              source_code: currentCode,
+              language_name: context.languageName,
+            }),
+          });
+
+          if (traceRes.ok) {
+            const traceData = await traceRes.json();
+            const asstMsg: ChatMessage = {
+              id: `asst_${Date.now()}`,
+              role: "assistant",
+              content: `Here is the interactive step-by-step visual trace generated for your code:\n\n\`\`\`trace\n${JSON.stringify(traceData, null, 2)}\n\`\`\`\n\n*Use the playback controls and timeline scrubber below to step through your program.*`,
+              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            };
+            const updated = [...messages, userMsg, asstMsg];
+            setMessages(updated);
+            try {
+              localStorage.setItem("devnix_ai_history", JSON.stringify(updated));
+            } catch {}
+            return;
+          }
+        } catch {}
+
+        const fallbackTrace = generateGenericCodeTrace(currentCode, context.languageName || "Program");
+        const asstMsg: ChatMessage = {
+          id: `asst_${Date.now()}`,
+          role: "assistant",
+          content: `Here is the interactive step-by-step visual trace generated for your code:\n\n\`\`\`trace\n${JSON.stringify(fallbackTrace, null, 2)}\n\`\`\`\n\n*Use the playback controls and timeline scrubber below to step through your program.*`,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+        const updated = [...messages, userMsg, asstMsg];
+        setMessages(updated);
+        try {
+          localStorage.setItem("devnix_ai_history", JSON.stringify(updated));
+        } catch {}
+        return;
+      }
       case "docs":
         prompt = `Add clean comments, docstrings, and type annotations to my ${context.languageName || "code"}.`;
+        handleSendMessage(prompt);
         break;
     }
+  };
+
+  const handleAskAiInsight = (stepData: TraceStep) => {
+    const prompt = `Can you provide a deep conceptual intuition for Step ${stepData.step} of this algorithm?\n- Line executed: \`${stepData.code || ""}\`\n- State: ${JSON.stringify(stepData.variables || {})}\n- Explanation: ${stepData.explanation}`;
     handleSendMessage(prompt);
   };
 
@@ -941,6 +995,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
           trace={directTrace}
           onHighlightLine={onHighlightLine}
           onApplyCode={(code) => handleApply(code, `${msgId}_direct`)}
+          onAskAiInsight={handleAskAiInsight}
         />
       );
     }
@@ -963,6 +1018,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
               trace={textTrace}
               onHighlightLine={onHighlightLine}
               onApplyCode={(code) => handleApply(code, `${msgId}_raw_${lastIndex}`)}
+              onAskAiInsight={handleAskAiInsight}
             />
           );
         } else {
@@ -984,6 +1040,7 @@ export const AiAssistantPanel: React.FC<AiAssistantPanelProps> = ({
             trace={traceObj}
             onHighlightLine={onHighlightLine}
             onApplyCode={(code) => handleApply(code, blockId)}
+            onAskAiInsight={handleAskAiInsight}
           />
         );
         lastIndex = match.index + match[0].length;

@@ -967,12 +967,14 @@ export default function DevnixStudio() {
         const lines = buffer.split("\n\n");
         buffer = lines.pop() || "";
 
+        const incomingBatch: { type: "stdout" | "stderr" | "input"; text: string }[] = [];
+
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             try {
               const data = JSON.parse(line.substring(6));
               if (data.type === "stdout" || data.type === "stderr") {
-                setTerminalLogs((prev) => [...prev, data]);
+                incomingBatch.push({ type: data.type, text: data.text });
                 if (data.type === "stderr" && data.text.trim()) {
                   showToast("error", "Execution Error", data.text.trim().substring(0, 100));
                 }
@@ -980,11 +982,18 @@ export default function DevnixStudio() {
               if (data.type === "exit") {
                 setIsProcessRunning(false);
                 if (data.code !== 0) {
-                  showToast("error", "Process Exited with Error", `Exit code ${data.code}`);
+                  showToast("error", "Process Exited", `Code ${data.code}`);
                 }
               }
             } catch {}
           }
+        }
+
+        if (incomingBatch.length > 0) {
+          setTerminalLogs((prev) => {
+            const merged = [...prev, ...incomingBatch];
+            return merged.length > 1000 ? merged.slice(-1000) : merged;
+          });
         }
       }
     } catch (err: any) {

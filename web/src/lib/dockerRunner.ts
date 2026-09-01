@@ -156,12 +156,27 @@ export function executeInDockerContainer(
     });
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(3);
 
-    const isSuccess = execRes.status === 0;
+    const isTimeout = (execRes.error as any)?.code === "ETIMEDOUT" || execRes.signal === "SIGTERM" || execRes.signal === "SIGKILL";
+    const isSuccess = execRes.status === 0 && !isTimeout;
+
+    let stdoutStr = execRes.stdout || null;
+    let stderrStr = execRes.stderr || null;
+
+    if (isTimeout) {
+      stderrStr = (stderrStr ? stderrStr + "\n" : "") + "⏱️ Time Limit Exceeded (Execution timed out after 15s).";
+    }
+
+    // Truncate massive output buffers (over 250KB) to prevent browser freezes
+    if (stdoutStr && stdoutStr.length > 250_000) {
+      stdoutStr = stdoutStr.slice(0, 250_000) + "\n\n⚠️ [Output Truncated: Exceeded 250KB limit to prevent browser freeze]";
+    }
 
     return {
-      stdout: execRes.stdout || null,
-      stderr: execRes.stderr || null,
-      status: isSuccess
+      stdout: stdoutStr,
+      stderr: stderrStr,
+      status: isTimeout
+        ? { id: 5, description: "Time Limit Exceeded" }
+        : isSuccess
         ? { id: 3, description: "Accepted" }
         : { id: 11, description: "Runtime Error" },
       time: elapsed,

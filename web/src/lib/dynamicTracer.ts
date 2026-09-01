@@ -40,15 +40,22 @@ export function tracePythonDynamic(sourceCode: string, stdin?: string): DynamicT
   const uniqueId = `trace_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
 
   const traceWrapper = `
-import sys, json, io
+import sys, json, io, time
 
 trace_events = []
 captured_stdout = io.StringIO()
 orig_stdout = sys.stdout
 sys.stdout = captured_stdout
 
+start_time = time.time()
+MAX_EVENTS = 3000
+MAX_TIME_SEC = 3.0
+
 def devnix_tracer(frame, event, arg):
     if event == 'line':
+        if len(trace_events) >= MAX_EVENTS or (time.time() - start_time) > MAX_TIME_SEC:
+            sys.settrace(None)
+            return None
         fn = frame.f_code.co_filename
         if fn.endswith('user_code.py') or fn == '<string>':
             locs = {}
@@ -176,7 +183,14 @@ console.log = (...args) => {
   captured_stdout += str;
 };
 
+const start_time = Date.now();
+const MAX_EVENTS = 3000;
+const MAX_TIME_MS = 3000;
+
 function __trace__(lineNum) {
+  if (trace_events.length >= MAX_EVENTS || Date.now() - start_time > MAX_TIME_MS) {
+    return;
+  }
   trace_events.push({
     line: lineNum,
     variables: {},

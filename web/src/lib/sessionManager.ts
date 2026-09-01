@@ -209,6 +209,19 @@ export function createInteractiveSession(
         },
       });
 
+      let totalBytesStreamed = 0;
+      const MAX_STREAM_BYTES = 250_000; // 250 KB max streaming buffer
+      let isThrottled = false;
+
+      // 15s hard safety watchdog for interactive sessions
+      const sessionWatchdog = setTimeout(() => {
+        if (sessions.has(sessionId)) {
+          onData({ type: "stderr", text: "\n⏱️ Time Limit Exceeded: Interactive session reached 15s timeout limit.\n" });
+          onData({ type: "exit", text: "", code: 124 });
+          killSession(sessionId);
+        }
+      }, 15000);
+
       const session: ExecutionSession = {
         id: sessionId,
         process: child,
@@ -216,25 +229,64 @@ export function createInteractiveSession(
         cleanupFiles,
         containerCleanupDir,
         startTime: Date.now(),
-        onData,
+        onData: (chunk) => {
+          if (chunk.type === "exit") {
+            clearTimeout(sessionWatchdog);
+          }
+          onData(chunk);
+        },
       };
 
       sessions.set(sessionId, session);
 
       child.stdout?.on("data", (data) => {
-        onData({ type: "stdout", text: data.toString("utf-8") });
+        if (isThrottled) return;
+        const text = data.toString("utf-8");
+        totalBytesStreamed += data.length;
+
+        if (totalBytesStreamed > MAX_STREAM_BYTES) {
+          isThrottled = true;
+          clearTimeout(sessionWatchdog);
+          onData({
+            type: "stderr",
+            text: `\n⚠️ Output Limit Exceeded (250KB / ~5,000 lines reached): Process terminated to prevent browser freeze (possible infinite print loop).\n`,
+          });
+          onData({ type: "exit", text: "", code: 137 });
+          killSession(sessionId);
+          return;
+        }
+
+        onData({ type: "stdout", text });
       });
 
       child.stderr?.on("data", (data) => {
-        onData({ type: "stderr", text: data.toString("utf-8") });
+        if (isThrottled) return;
+        const text = data.toString("utf-8");
+        totalBytesStreamed += data.length;
+
+        if (totalBytesStreamed > MAX_STREAM_BYTES) {
+          isThrottled = true;
+          clearTimeout(sessionWatchdog);
+          onData({
+            type: "stderr",
+            text: `\n⚠️ Output Limit Exceeded: Process terminated.\n`,
+          });
+          onData({ type: "exit", text: "", code: 137 });
+          killSession(sessionId);
+          return;
+        }
+
+        onData({ type: "stderr", text });
       });
 
       child.on("error", (err) => {
+        clearTimeout(sessionWatchdog);
         onData({ type: "stderr", text: `\nProcess Error: ${err.message}\n` });
         cleanupSession(sessionId);
       });
 
       child.on("close", (code) => {
+        clearTimeout(sessionWatchdog);
         onData({
           type: "exit",
           text: "",

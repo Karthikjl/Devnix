@@ -141,7 +141,7 @@ finally:
         encoding: "utf-8",
         timeout: 3000,
       });
-      const res = spawnSync("docker", ["exec", "-i", container, "python3", `${containerDir}/runner.py`], {
+      const res = spawnSync("docker", ["exec", "-i", container, "sh", "-c", `timeout --kill-after=1s 5s python3 "${containerDir}/runner.py"`], {
         input: stdin || "",
         encoding: "utf-8",
         timeout: 6000,
@@ -152,7 +152,18 @@ finally:
         const events: DynamicTraceEvent[] = JSON.parse(jsonStr);
         if (events.length > 0) return events;
       }
-    } catch {}
+    } catch {} finally {
+      try {
+        spawnSync("docker", [
+          "exec",
+          "-i",
+          container,
+          "sh",
+          "-c",
+          `pkill -9 -f "${containerDir}" 2>/dev/null || true; rm -rf "${containerDir}"`
+        ], { timeout: 3000 });
+      } catch {}
+    }
   }
 
   return null;

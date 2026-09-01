@@ -99,61 +99,63 @@ export function createInteractiveSession(
         }
       }
 
+      const TIMEOUT_WRAPPER = "timeout --kill-after=1s 30s";
+
       switch (langId) {
         case 50: // C
         case 48:
         case 49:
           compileCmd = `${CONTAINER_ENV_PATH}; gcc -O2 "${containerFile}.c" -o "${containerFile}.exe"`;
-          execArgs = ["exec", "-i", workerContainer, `${containerFile}.exe`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${TIMEOUT_WRAPPER} "${containerFile}.exe"`];
           break;
 
         case 54: // C++
         case 52:
         case 53:
           compileCmd = `${CONTAINER_ENV_PATH}; g++ -O2 "${containerFile}.cpp" -o "${containerFile}.exe"`;
-          execArgs = ["exec", "-i", workerContainer, `${containerFile}.exe`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${TIMEOUT_WRAPPER} "${containerFile}.exe"`];
           break;
 
         case 62: { // Java
           const classMatch = codeToWrite.match(/public\s+class\s+([A-Za-z0-9_]+)/) || codeToWrite.match(/class\s+([A-Za-z0-9_]+)/);
           const javaClassName = classMatch ? classMatch[1] : "Main";
           compileCmd = `${CONTAINER_ENV_PATH}; javac "${containerFile}/${javaClassName}.java"`;
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; java -cp "${containerFile}" ${javaClassName}`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} java -cp "${containerFile}" ${javaClassName}`];
           break;
         }
 
         case 73: // Rust
           compileCmd = `${CONTAINER_ENV_PATH}; rustc -O "${containerFile}.rs" -o "${containerFile}.exe"`;
-          execArgs = ["exec", "-i", workerContainer, `${containerFile}.exe`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${TIMEOUT_WRAPPER} "${containerFile}.exe"`];
           break;
 
         case 60: // Go
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; go run "${containerFile}.go"`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} go run "${containerFile}.go"`];
           break;
 
         case 71: // Python
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; python3 -u "${containerFile}.py"`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} python3 -u "${containerFile}.py"`];
           break;
 
         case 63: // JavaScript
         case 74: // TypeScript
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; node "${containerFile}.js"`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} node "${containerFile}.js"`];
           break;
 
         case 72: // Ruby
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ruby "${containerFile}.rb"`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} ruby "${containerFile}.rb"`];
           break;
 
         case 68: // PHP
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; php "${containerFile}.php"`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} php "${containerFile}.php"`];
           break;
 
         case 46: // Bash
-          execArgs = ["exec", "-i", workerContainer, "bash", `${containerFile}.sh`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${TIMEOUT_WRAPPER} bash "${containerFile}.sh"`];
           break;
 
         default:
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; python3 -u "${containerFile}.py"`];
+          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} python3 -u "${containerFile}.py"`];
           break;
       }
 
@@ -346,7 +348,15 @@ function cleanupSession(sessionId: string) {
   const session = sessions.get(sessionId);
   if (session) {
     if (session.containerCleanupDir && session.containerName) {
-      spawnSync("docker", ["exec", session.containerName, "rm", "-rf", `${session.containerCleanupDir}*`]);
+      try {
+        spawnSync("docker", [
+          "exec",
+          session.containerName,
+          "sh",
+          "-c",
+          `pkill -9 -f "${session.containerCleanupDir}" || true; rm -rf "${session.containerCleanupDir}"*`
+        ], { timeout: 3000 });
+      } catch {}
     }
     for (const file of session.cleanupFiles) {
       if (fs.existsSync(file)) {

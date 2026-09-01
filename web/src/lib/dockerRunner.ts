@@ -147,12 +147,13 @@ export function executeInDockerContainer(
       }
     }
 
-    // Run execution with Stdin
+    // Run execution with Stdin wrapped in container-level kernel timeout
     const startTime = Date.now();
-    const execRes = spawnSync("docker", ["exec", "-i", container, "sh", "-c", runCmd], {
+    const wrappedRunCmd = `timeout --kill-after=1s 15s ${runCmd}`;
+    const execRes = spawnSync("docker", ["exec", "-i", container, "sh", "-c", wrappedRunCmd], {
       input: normalizedStdin,
       encoding: "utf-8",
-      timeout: 15000,
+      timeout: 16000,
     });
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(3);
 
@@ -191,9 +192,16 @@ export function executeInDockerContainer(
       memory: 0,
     };
   } finally {
-    // Cleanup container sandbox dir asynchronously
+    // Kill any lingering container processes matching containerDir and cleanup sandbox dir
     try {
-      spawnSync("docker", ["exec", "-i", container, "rm", "-rf", containerDir], { timeout: 3000 });
+      spawnSync("docker", [
+        "exec",
+        "-i",
+        container,
+        "sh",
+        "-c",
+        `pkill -9 -f "${containerDir}" 2>/dev/null || true; rm -rf "${containerDir}"`
+      ], { timeout: 3000 });
     } catch {}
   }
 }

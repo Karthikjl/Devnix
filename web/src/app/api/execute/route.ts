@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { executeInDockerContainer } from "@/lib/dockerRunner";
+import { getCurrentUser } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    }
+
     const { language_id, source_code, stdin } = await req.json();
 
     if (!language_id || typeof source_code !== "string") {
@@ -16,36 +22,7 @@ export async function POST(req: NextRequest) {
     const cleanSourceCode = source_code.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const cleanStdin = typeof stdin === "string" ? stdin.replace(/\r\n/g, "\n").replace(/\r/g, "\n") : undefined;
 
-    const judge0Url = process.env.JUDGE0_URL || "http://server:2358";
-
-    // 1. Attempt execution via Judge0 API if online
-    try {
-      const judgeRes = await fetch(`${judge0Url}/submissions?base64_encoded=false&wait=true`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          language_id,
-          source_code: cleanSourceCode,
-          stdin: cleanStdin,
-        }),
-        signal: AbortSignal.timeout(6000),
-      });
-
-      if (judgeRes.ok) {
-        const judgeData = await judgeRes.json();
-        // If Judge0 returned a real execution result (not an internal isolate error), return it
-        if (judgeData && judgeData.status && judgeData.status.id !== 13) {
-          return NextResponse.json(judgeData);
-        }
-      }
-    } catch {
-      // Judge0 is offline or unavailable on this architecture -> proceed to native Docker Runner container
-    }
-
-    // 2. Execute directly inside the sandboxed native Docker Runner container
+    // Execute inside the isolated runner container
     const result = executeInDockerContainer(language_id, cleanSourceCode, cleanStdin);
     return NextResponse.json(result);
   } catch (error: any) {

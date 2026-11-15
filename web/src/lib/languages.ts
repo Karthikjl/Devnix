@@ -46,7 +46,7 @@ const features = [
   "Neobrutalist Code Playground",
   "High Speed Execution",
   "Multi-language Compilers",
-  "Powered by Judge0 & Next.js"
+  "Powered by Devnix & Next.js"
 ];
 
 generateReport("Devnix Engine Features", features);
@@ -166,7 +166,7 @@ import "fmt"
 
 func main() {
     fmt.Println("⚡ Hello from Go on Devnix! ⚡")
-    tasks := []string{"Build UI", "Connect Judge0", "Ship Devnix"}
+    tasks := []string{"Build UI", "Connect Runner", "Ship Devnix"}
     for i, task := range tasks {
         fmt.Printf("[%d] %s\\n", i+1, task)
     }

@@ -1,7 +1,4 @@
-import { spawnSync } from "child_process";
-import fs from "fs";
-import path from "path";
-import os from "os";
+import { runnerSpawn, runnerSpawnSync, RUNNER_NAME } from "./runner";
 
 export interface DynamicTraceEvent {
   line: number;
@@ -11,22 +8,7 @@ export interface DynamicTraceEvent {
 }
 
 function getRunnerContainer(): string | null {
-  try {
-    const res = spawnSync("docker", ["ps", "--format", "{{.Names}}"], {
-      encoding: "utf-8",
-      timeout: 2000,
-    });
-    if (res.stdout) {
-      const names = res.stdout.trim().split(/\r?\n/).map((n) => n.trim()).filter(Boolean);
-      const runner = names.find((n) => n.includes("runner"));
-      if (runner) return runner;
-      const worker = names.find((n) => n.includes("worker") || n.includes("server") || n.includes("judge0"));
-      if (worker) return worker;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  return RUNNER_NAME;
 }
 
 /**
@@ -98,50 +80,23 @@ finally:
     print("__DEVNIX_TRACE_END__")
 `;
 
-  // 1. Try local host Python first (Instant, zero latency)
-  try {
-    const tmpDir = path.join(os.tmpdir(), "devnix_trace", uniqueId);
-    fs.mkdirSync(tmpDir, { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, "user_code.py"), cleanSourceCode, "utf-8");
-    fs.writeFileSync(path.join(tmpDir, "runner.py"), traceWrapper, "utf-8");
-
-    const pythonCmd = process.platform === "win32" ? "python" : "python3";
-    const res = spawnSync(pythonCmd, ["runner.py"], {
-      cwd: tmpDir,
-      input: stdin || "",
-      encoding: "utf-8",
-      timeout: 5000,
-    });
-
-    try {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    } catch {}
-
-    const out = res.stdout || "";
-    if (out.includes("__DEVNIX_TRACE_START__") && out.includes("__DEVNIX_TRACE_END__")) {
-      const jsonStr = out.split("__DEVNIX_TRACE_START__")[1].split("__DEVNIX_TRACE_END__")[0].trim();
-      const events: DynamicTraceEvent[] = JSON.parse(jsonStr);
-      if (events.length > 0) return events;
-    }
-  } catch {}
-
-  // 2. Fallback to Docker Container if host Python is not present
+  // Always run in the isolated runner container (never inside the web container)
   const container = getRunnerContainer();
   if (container) {
     const containerDir = `/tmp/sandbox/${uniqueId}`;
     try {
-      spawnSync("docker", ["exec", "-i", container, "mkdir", "-p", containerDir], { encoding: "utf-8", timeout: 3000 });
-      spawnSync("docker", ["exec", "-i", container, "sh", "-c", `cat > "${containerDir}/user_code.py"`], {
+      runnerSpawnSync(["mkdir", "-p", containerDir], { encoding: "utf-8", timeout: 3000 });
+      runnerSpawnSync(["sh", "-c", `cat > "${containerDir}/user_code.py"`], {
         input: cleanSourceCode,
         encoding: "utf-8",
         timeout: 3000,
       });
-      spawnSync("docker", ["exec", "-i", container, "sh", "-c", `cat > "${containerDir}/runner.py"`], {
+      runnerSpawnSync(["sh", "-c", `cat > "${containerDir}/runner.py"`], {
         input: traceWrapper,
         encoding: "utf-8",
         timeout: 3000,
       });
-      const res = spawnSync("docker", ["exec", "-i", container, "sh", "-c", `timeout --kill-after=1s 5s python3 "${containerDir}/runner.py"`], {
+      const res = runnerSpawnSync(["sh", "-c", `cd "${containerDir}" && timeout --kill-after=1s 5s python3 runner.py`], {
         input: stdin || "",
         encoding: "utf-8",
         timeout: 6000,
@@ -154,10 +109,7 @@ finally:
       }
     } catch {} finally {
       try {
-        spawnSync("docker", [
-          "exec",
-          "-i",
-          container,
+        runnerSpawnSync([
           "sh",
           "-c",
           `pkill -9 -f "${containerDir}" 2>/dev/null || true; rm -rf "${containerDir}"`
@@ -219,20 +171,22 @@ try {
 }
 `;
 
+  const container = getRunnerContainer();
+  if (!container) return null;
+  const containerDir = `/tmp/sandbox/${uniqueId}`;
+
   try {
-    const tmpDir = path.join(os.tmpdir(), "devnix_trace", uniqueId);
-    fs.mkdirSync(tmpDir, { recursive: true });
-    const scriptPath = path.join(tmpDir, "runner.js");
-    const res = spawnSync(process.execPath, [scriptPath], {
-      cwd: tmpDir,
+    runnerSpawnSync(["mkdir", "-p", containerDir], { encoding: "utf-8", timeout: 3000 });
+    runnerSpawnSync(["sh", "-c", `cat > "${containerDir}/runner.js"`], {
+      input: runnerCode,
+      encoding: "utf-8",
+      timeout: 3000,
+    });
+    const res = runnerSpawnSync(["sh", "-c", `timeout --kill-after=1s 5s node "${containerDir}/runner.js"`], {
       input: stdin || "",
       encoding: "utf-8",
-      timeout: 5000,
+      timeout: 6000,
     });
-
-    try {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    } catch {}
 
     const out = res.stdout || "";
     if (out.includes("__DEVNIX_TRACE_START__") && out.includes("__DEVNIX_TRACE_END__")) {
@@ -240,7 +194,11 @@ try {
       const events: DynamicTraceEvent[] = JSON.parse(jsonStr);
       if (events.length > 0) return events;
     }
-  } catch {}
+  } catch {} finally {
+    try {
+      runnerSpawnSync(["sh", "-c", `rm -rf "${containerDir}"`], { timeout: 3000 });
+    } catch {}
+  }
 
   return null;
 }
@@ -266,19 +224,19 @@ source "${containerDir}/user_script.sh"
 `;
 
   try {
-    spawnSync("docker", ["exec", "-i", container, "mkdir", "-p", containerDir], { encoding: "utf-8", timeout: 3000 });
-    spawnSync("docker", ["exec", "-i", container, "sh", "-c", `cat > "${containerDir}/user_script.sh"`], {
+    runnerSpawnSync(["mkdir", "-p", containerDir], { encoding: "utf-8", timeout: 3000 });
+    runnerSpawnSync(["sh", "-c", `cat > "${containerDir}/user_script.sh"`], {
       input: cleanSourceCode,
       encoding: "utf-8",
       timeout: 3000,
     });
-    spawnSync("docker", ["exec", "-i", container, "sh", "-c", `cat > "${containerDir}/runner.sh"`], {
+    runnerSpawnSync(["sh", "-c", `cat > "${containerDir}/runner.sh"`], {
       input: bashWrapper,
       encoding: "utf-8",
       timeout: 3000,
     });
 
-    const res = spawnSync("docker", ["exec", "-i", container, "bash", `${containerDir}/runner.sh`], {
+    const res = runnerSpawnSync(["bash", `${containerDir}/runner.sh`], {
       input: stdin || "",
       encoding: "utf-8",
       timeout: 6000,

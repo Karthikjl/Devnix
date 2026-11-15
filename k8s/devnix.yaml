@@ -1,0 +1,164 @@
+# Devnix on k3s. Secret "devnix-runner" (key: token) is created separately, never committed.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devnix
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: devnix-data
+  namespace: devnix
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi
+---
+# Code runner: non-root, read-only root FS, no service account, no network egress (see NetworkPolicy)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devnix-runner
+  namespace: devnix
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: devnix-runner }
+  template:
+    metadata:
+      labels: { app: devnix-runner }
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: runner
+          image: devnix-runner:1.1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RUNNER_TOKEN
+              valueFrom: { secretKeyRef: { name: devnix-runner, key: token } }
+          ports:
+            - containerPort: 7070
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 1500m, memory: 1Gi }
+          readinessProbe:
+            tcpSocket: { port: 7070 }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: 7070 }
+            periodSeconds: 20
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { medium: Memory, sizeLimit: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: runner
+  namespace: devnix
+spec:
+  selector: { app: devnix-runner }
+  ports:
+    - port: 7070
+      targetPort: 7070
+---
+# Web studio: non-root, no Docker socket, no service account. Bound to 127.0.0.1:3000 for nginx.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devnix-web
+  namespace: devnix
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: devnix-web }
+  template:
+    metadata:
+      labels: { app: devnix-web }
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: web
+          image: devnix-web:1.1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: PORT, value: "3000" }
+            - { name: NODE_ENV, value: production }
+            - { name: DEVNIX_DB_PATH, value: /app/data/devnix.db }
+            - { name: DEVNIX_RUNNER_HOST, value: runner }
+            - { name: DEVNIX_RUNNER_PORT, value: "7070" }
+            - name: DEVNIX_RUNNER_TOKEN
+              valueFrom: { secretKeyRef: { name: devnix-runner, key: token } }
+          ports:
+            - containerPort: 3000
+              hostPort: 3000
+              hostIP: 127.0.0.1
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          readinessProbe:
+            httpGet: { path: /api/languages, port: 3000 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/languages, port: 3000 }
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          volumeMounts:
+            - { name: data, mountPath: /app/data }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: devnix-data }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: devnix-web
+  namespace: devnix
+spec:
+  selector: { app: devnix-web }
+  ports:
+    - port: 80
+      targetPort: 3000
+---
+# Runner accepts connections only from the web pod, and can open no outbound connections at all.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: runner-isolation
+  namespace: devnix
+spec:
+  podSelector:
+    matchLabels: { app: devnix-runner }
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: devnix-web }
+      ports:
+        - port: 7070
+  egress: []

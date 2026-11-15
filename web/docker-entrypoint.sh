@@ -8,7 +8,6 @@ mkdir -p /app/data 2>/dev/null || true
 if [ "$(id -u)" = "0" ]; then
   chown -R nextjs:nodejs /app/data 2>/dev/null || true
   chmod 775 /app/data 2>/dev/null || true
-  chmod 666 /var/run/docker.sock 2>/dev/null || true
   exec su-exec nextjs "$@"
 else
   exec "$@"

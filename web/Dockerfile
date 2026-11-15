@@ -5,7 +5,7 @@
 # 1. Base image (Node 22+ required for native node:sqlite support)
 FROM node:22-alpine AS base
 WORKDIR /app
-RUN apk add --no-cache libc6-compat python3 su-exec docker-cli
+RUN apk add --no-cache libc6-compat python3 su-exec
 
 # 2. Dependencies
 FROM base AS deps
@@ -38,6 +38,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder --chown=nextjs:nodejs /app/src ./src
+COPY --from=builder --chown=nextjs:nodejs /app/runner-client.js ./runner-client.js
 
 # Copy entrypoint script and make it executable with Unix LF line endings
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh

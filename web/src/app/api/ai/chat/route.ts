@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AI_PROVIDERS, buildSystemPrompt, CodeContext } from "@/lib/aiService";
+import { getCurrentUser } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    }
+
     const body = await req.json();
     const {
       messages = [],
@@ -17,7 +23,8 @@ export async function POST(req: NextRequest) {
 
     // Resolve API Key
     let apiKey = clientApiKey;
-    if (!apiKey) {
+    // Server keys are only used with the provider's own endpoint, never a client-supplied URL
+    if (!apiKey && !clientBaseUrl) {
       apiKey =
         process.env.DEVNIX_AI_API_KEY ||
         process.env[providerConfig.envKeyName] ||

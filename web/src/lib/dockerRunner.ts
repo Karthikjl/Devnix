@@ -1,4 +1,4 @@
-import { spawnSync } from "child_process";
+import { runnerSpawn, runnerSpawnSync, RUNNER_NAME } from "./runner";
 
 export interface DockerExecutionResult {
   stdout: string | null;
@@ -12,23 +12,7 @@ export interface DockerExecutionResult {
 const CONTAINER_ENV_PATH = "export PATH=/usr/local/rust-1.40.0/bin:/usr/local/go-1.13.5/bin:/usr/local/php-7.4.1/bin:/usr/local/ruby-2.7.0/bin:/usr/local/openjdk13/bin:/usr/local/node-12.14.0/bin:/usr/local/python-3.8.1/bin:/usr/local/bin:/usr/bin:/bin:$PATH;";
 
 function getRunnerContainer(): string | null {
-  try {
-    const res = spawnSync("docker", ["ps", "--format", "{{.Names}}"], {
-      encoding: "utf-8",
-      timeout: 3000,
-    });
-    if (res.stdout) {
-      const names = res.stdout.trim().split(/\r?\n/).map((n) => n.trim()).filter(Boolean);
-      // Prioritize dedicated runner container first
-      const runner = names.find((n) => n.includes("runner"));
-      if (runner) return runner;
-      const worker = names.find((n) => n.includes("worker") || n.includes("server") || n.includes("judge0"));
-      if (worker) return worker;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  return RUNNER_NAME;
 }
 
 export function executeInDockerContainer(
@@ -55,7 +39,7 @@ export function executeInDockerContainer(
   const normalizedStdin = stdin ? stdin.replace(/\r\n/g, "\n").replace(/\r/g, "\n") : "";
 
   try {
-    spawnSync("docker", ["exec", "-i", container, "mkdir", "-p", containerDir], { encoding: "utf-8", timeout: 4000 });
+    runnerSpawnSync(["mkdir", "-p", containerDir], { encoding: "utf-8", timeout: 4000 });
 
     const extMap: Record<number, string> = {
       50: "c", 48: "c", 49: "c",
@@ -71,7 +55,7 @@ export function executeInDockerContainer(
       // Java: detect class name
       const classMatch = normalizedCode.match(/public\s+class\s+([A-Za-z0-9_]+)/) || normalizedCode.match(/class\s+([A-Za-z0-9_]+)/);
       const className = classMatch ? classMatch[1] : "Main";
-      spawnSync("docker", ["exec", "-i", container, "sh", "-c", `cat > "${containerDir}/${className}.java"`], {
+      runnerSpawnSync(["sh", "-c", `cat > "${containerDir}/${className}.java"`], {
         input: normalizedCode,
         encoding: "utf-8",
         timeout: 4000,
@@ -81,7 +65,7 @@ export function executeInDockerContainer(
     } else {
       const ext = extMap[languageId] || "py";
       const filePath = `${containerDir}/prog.${ext}`;
-      spawnSync("docker", ["exec", "-i", container, "sh", "-c", `cat > "${filePath}"`], {
+      runnerSpawnSync(["sh", "-c", `cat > "${filePath}"`], {
         input: normalizedCode,
         encoding: "utf-8",
         timeout: 4000,
@@ -131,7 +115,7 @@ export function executeInDockerContainer(
 
     // Run compilation if needed
     if (compileCmd) {
-      const compRes = spawnSync("docker", ["exec", "-i", container, "sh", "-c", compileCmd], {
+      const compRes = runnerSpawnSync(["sh", "-c", compileCmd], {
         encoding: "utf-8",
         timeout: 10000,
       });
@@ -150,7 +134,7 @@ export function executeInDockerContainer(
     // Run execution with Stdin wrapped in container-level kernel timeout
     const startTime = Date.now();
     const wrappedRunCmd = `timeout --kill-after=1s 15s ${runCmd}`;
-    const execRes = spawnSync("docker", ["exec", "-i", container, "sh", "-c", wrappedRunCmd], {
+    const execRes = runnerSpawnSync(["sh", "-c", wrappedRunCmd], {
       input: normalizedStdin,
       encoding: "utf-8",
       timeout: 16000,
@@ -194,10 +178,7 @@ export function executeInDockerContainer(
   } finally {
     // Kill any lingering container processes matching containerDir and cleanup sandbox dir
     try {
-      spawnSync("docker", [
-        "exec",
-        "-i",
-        container,
+      runnerSpawnSync([
         "sh",
         "-c",
         `pkill -9 -f "${containerDir}" 2>/dev/null || true; rm -rf "${containerDir}"`

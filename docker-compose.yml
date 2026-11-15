@@ -1,95 +1,53 @@
 services:
-  # 1. Devnix Web Studio (Next.js)
+  # 1. Devnix Web Studio (Next.js) - no Docker socket; runs code via the runner agent
   web:
     build:
       context: ./web
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       - PORT=3000
       - NODE_ENV=production
-      - JUDGE0_URL=http://server:2358
       - DEVNIX_DB_PATH=/app/data/devnix.db
+      - DEVNIX_RUNNER_HOST=runner
+      - DEVNIX_RUNNER_PORT=7070
+      - DEVNIX_RUNNER_TOKEN=${RUNNER_TOKEN:?set RUNNER_TOKEN in .env}
     volumes:
       - devnix-data:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - default
+      - sandbox
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
   # 2. Universal Native Multi-Arch Execution Engine (ARM64 + x86_64)
+  #    Isolated: no internet, non-root, read-only root FS, resource limits
   runner:
     build:
       context: ./runner
       dockerfile: Dockerfile
-    restart: always
-    volumes:
-      - isolate-data:/tmp/sandbox
+    environment:
+      - RUNNER_TOKEN=${RUNNER_TOKEN:?set RUNNER_TOKEN in .env}
+    networks:
+      - sandbox
+    read_only: true
+    tmpfs:
+      - /tmp:exec,mode=1777,size=512m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: 1.5
+    restart: unless-stopped
 
-  # 3. Judge0 API Server (x86_64 only)
-  server:
-    profiles: ["judge0", "full"]
-    image: judge0/judge0:latest
-    platform: linux/amd64
-    volumes:
-      - ./judge0/judge0.conf:/judge0.conf:ro
-    ports:
-      - "2358:2358"
-    privileged: true
-    restart: always
-    env_file: ./judge0/judge0.conf
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  # 4. Judge0 Execution Workers (x86_64 only)
-  workers:
-    profiles: ["judge0", "full"]
-    image: judge0/judge0:latest
-    platform: linux/amd64
-    command: ["./scripts/workers"]
-    volumes:
-      - ./judge0/judge0.conf:/judge0.conf:ro
-      - isolate-data:/var/local/lib/isolate:rw
-    privileged: true
-    restart: always
-    env_file: ./judge0/judge0.conf
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  # 5. PostgreSQL Database (For Judge0 on x86_64)
-  db:
-    profiles: ["judge0", "full"]
-    image: postgres:13.0
-    env_file: ./judge0/judge0.conf
-    volumes:
-      - postgres-data:/var/lib/postgresql/data/
-    restart: always
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # 6. Redis Queue Store (For Judge0 on x86_64)
-  redis:
-    profiles: ["judge0", "full"]
-    image: redis:6.0
-    command: ["sh", "-c", "docker-entrypoint.sh --requirepass $$REDIS_PASSWORD"]
-    env_file: ./judge0/judge0.conf
-    volumes:
-      - redis-data:/data
-    restart: always
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "redispassword", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+networks:
+  # Internal-only network: the runner can talk to web, but has no internet access
+  sandbox:
+    internal: true
 
 volumes:
   devnix-data:
-  postgres-data:
-  redis-data: 
-  isolate-data:

@@ -14,7 +14,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "DEVNIX - Code Studio",
-  description: "Execute code instantly in 60+ languages with Judge0 and Neobrutalist UI aesthetics.",
+  description: "Execute code instantly in multiple languages with a sandboxed runner and Neobrutalist UI aesthetics.",
   icons: {
     icon: "/icon.png",
     shortcut: "/icon.png",

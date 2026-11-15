@@ -9,7 +9,6 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
-      - JUDGE0_URL=http://server:2358
       - DEVNIX_DB_PATH=/app/data/devnix.db
       - DEVNIX_RUNNER_HOST=runner
       - DEVNIX_RUNNER_PORT=7070
@@ -45,71 +44,6 @@ services:
     cpus: 1.5
     restart: unless-stopped
 
-  # 3. Judge0 API Server (x86_64 only)
-  server:
-    profiles: ["judge0", "full"]
-    image: judge0/judge0:latest
-    platform: linux/amd64
-    volumes:
-      - ./judge0/judge0.conf:/judge0.conf:ro
-    ports:
-      - "2358:2358"
-    privileged: true
-    restart: always
-    env_file: ./judge0/judge0.conf
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  # 4. Judge0 Execution Workers (x86_64 only)
-  workers:
-    profiles: ["judge0", "full"]
-    image: judge0/judge0:latest
-    platform: linux/amd64
-    command: ["./scripts/workers"]
-    volumes:
-      - ./judge0/judge0.conf:/judge0.conf:ro
-      - isolate-data:/var/local/lib/isolate:rw
-    privileged: true
-    restart: always
-    env_file: ./judge0/judge0.conf
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  # 5. PostgreSQL Database (For Judge0 on x86_64)
-  db:
-    profiles: ["judge0", "full"]
-    image: postgres:13.0
-    env_file: ./judge0/judge0.conf
-    volumes:
-      - postgres-data:/var/lib/postgresql/data/
-    restart: always
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # 6. Redis Queue Store (For Judge0 on x86_64)
-  redis:
-    profiles: ["judge0", "full"]
-    image: redis:6.0
-    command: ["sh", "-c", "docker-entrypoint.sh --requirepass $$REDIS_PASSWORD"]
-    env_file: ./judge0/judge0.conf
-    volumes:
-      - redis-data:/data
-    restart: always
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "redispassword", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
 networks:
   # Internal-only network: the runner can talk to web, but has no internet access
   sandbox:
@@ -117,6 +51,3 @@ networks:
 
 volumes:
   devnix-data:
-  postgres-data:
-  redis-data:
-  isolate-data:

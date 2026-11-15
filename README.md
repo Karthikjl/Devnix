@@ -6,11 +6,10 @@
 
 ![Devnix Studio UI Preview](./docs/preview.png)
 
-**A high-performance, multi-language online code execution playground built with Next.js 15, TypeScript, Tailwind CSS, and Judge0 CE.**
+**A high-performance, multi-language online code execution playground built with Next.js, TypeScript, Tailwind CSS, and a sandboxed multi-language runner.**
 
 [![Next.js](https://img.shields.io/badge/Next.js-15+-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5+-3178C6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
-[![Judge0 CE](https://img.shields.io/badge/Judge0-v1.13.1-orange?style=for-the-badge)](https://judge0.com/)
 [![Aesthetic](https://img.shields.io/badge/Style-Neobrutalism-FFE600?style=for-the-badge)](#-ui-design-features)
 [![Tests](https://img.shields.io/badge/Tests-11%2F11%20Passing-22c55e?style=for-the-badge)](#-automated-tests)
 
@@ -70,9 +69,9 @@
   - Secure JWT authentication with HTTP-only cookie tokens and auto-refresh.
   - Profile customization and password management.
   - Admin Panel with user controls, self-signup toggle, and administrative user impersonation.
-- **⚡ Dual Execution Architecture**:
-  - **Production Mode**: Communicates with sandboxed **Judge0 CE** containers running on Docker.
-  - **Local Development Mode**: Built-in intelligent hybrid fallback runner for instant cross-platform testing (Windows, macOS, Linux) with full UTF-8 emoji support.
+- **🔒 Sandboxed Execution Architecture**:
+  - All code runs in an isolated **runner** container reached through a token-authenticated agent (no Docker socket in the web app).
+  - The runner is non-root, has no network access, a read-only root filesystem and CPU / memory / process limits.
 - **⌨️ Developer-First UX**:
   - `Ctrl + Enter` / `Cmd + Enter` instant run shortcut.
   - Custom `Tab` handling (4-space indentation without losing focus).
@@ -89,11 +88,11 @@
 Devnix/
 ├── docs/
 │   └── devnix_preview.png       # UI preview screenshot
-├── judge0/                      # Backend Code Execution Engine
-│   ├── docker-compose.yml       # Server, Worker, Redis, and Postgres services
-│   ├── judge0.conf              # Judge0 resource & timeout configurations
-│   ├── test_submission.ps1      # Direct PowerShell API test script
-│   └── README.md                # Dedicated Judge0 documentation
+├── runner/                      # Sandboxed multi-language execution engine
+│   ├── Dockerfile               # Compilers & runtimes (C/C++, Java, Go, Rust, Python, Node, Ruby, PHP, Bash)
+│   └── agent.js                 # Token-authenticated execution agent
+├── k8s/
+│   └── devnix.yaml              # Kubernetes (k3s) deployment with NetworkPolicy
 ├── web/                         # Next.js Frontend Application
 │   ├── src/
 │   │   ├── app/
@@ -118,7 +117,7 @@ Devnix/
 
 - **Node.js** (v18.0.0 or higher)
 - **npm** (v9+ or higher)
-- **Docker Desktop** *(Optional: if self-hosting the Judge0 Docker cluster locally)*
+- **Docker** with Docker Compose
 
 ---
 
@@ -146,15 +145,11 @@ chmod +x ./start.sh
 .\start.ps1
 ```
 
-Or start directly with Docker Compose:
-- **Universal Mode (ARM64 & x86_64)**:
-  ```bash
-  docker compose up -d
-  ```
-- **Full Stack Mode with Judge0 (x86_64 only)**:
-  ```bash
-  docker compose --profile full up -d
-  ```
+Or start directly with Docker Compose (create the runner token once):
+```bash
+echo "RUNNER_TOKEN=$(openssl rand -hex 32)" > .env
+docker compose up -d --build
+```
 
 - **Devnix Web Studio**: `http://localhost:3000`
 
@@ -294,7 +289,7 @@ Adding a new language takes just **3 simple steps**:
    Open [`web/src/lib/languages.ts`](./web/src/lib/languages.ts) and append your language to `SUPPORTED_LANGUAGES`:
    ```typescript
    {
-     id: 80, // Official Judge0 Language ID
+     id: 80, // Unique language ID
      name: "r",
      label: "R (GCC)",
      version: "4.0.0",

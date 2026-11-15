@@ -1,9 +1,6 @@
 # ==============================================================================
-# DEVNIX Multi-Architecture Smart Deployment Script (Windows PowerShell)
+# DEVNIX Multi-Architecture Deployment Script (Windows PowerShell)
 # ==============================================================================
-param (
-    [switch]$Light
-)
 
 $arch = $env:PROCESSOR_ARCHITECTURE
 
@@ -12,12 +9,14 @@ Write-Host "⚡ DEVNIX CLOUD IDE & MULTI-LANGUAGE ENGINE" -ForegroundColor Yello
 Write-Host "🖥️  Detected Architecture: $arch" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-if ($Light -or ($arch -match "ARM64")) {
-    Write-Host "🚀 Launching Universal Native Engine (Web + Runner)..." -ForegroundColor Green
-    docker compose up -d --build web runner
-    Write-Host "✅ Devnix is running at http://localhost:3000" -ForegroundColor Green
-} else {
-    Write-Host "🚀 Detected $arch (Intel / AMD64). Launching Full Multi-Arch Engine..." -ForegroundColor Green
-    docker compose --profile full up -d --build
-    Write-Host "✅ Devnix is running with Full Engine at http://localhost:3000" -ForegroundColor Green
+# The web app authenticates to the runner with a shared secret
+if (-not (Test-Path .env) -or -not (Select-String -Path .env -Pattern '^RUNNER_TOKEN=' -Quiet)) {
+    Write-Host "🔑 Generating RUNNER_TOKEN in .env..." -ForegroundColor Yellow
+    $bytes = New-Object byte[] 32
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    Add-Content -Path .env -Value ("RUNNER_TOKEN=" + (($bytes | ForEach-Object { $_.ToString("x2") }) -join ""))
 }
+
+Write-Host "🚀 Launching Devnix (Web + Sandboxed Runner)..." -ForegroundColor Green
+docker compose up -d --build web runner
+Write-Host "✅ Devnix is running at http://localhost:3000" -ForegroundColor Green

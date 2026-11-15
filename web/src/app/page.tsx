@@ -517,7 +517,7 @@ export default function DevnixStudio() {
     }, 150);
   }, []);
 
-  // Fetch dynamic languages from Judge0 API on mount
+  // Fetch supported languages on mount
   useEffect(() => {
     fetch("/api/languages")
       .then((res) => res.json())

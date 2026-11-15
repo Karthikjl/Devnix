@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { executeInDockerContainer } from "@/lib/dockerRunner";
+import { getCurrentUser } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    }
+
     const { language_id, source_code, stdin } = await req.json();
 
     if (!language_id || typeof source_code !== "string") {

@@ -1,8 +1,17 @@
 import { NextRequest } from "next/server";
 import { createInteractiveSession } from "@/lib/sessionManager";
+import { getCurrentUser } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return new Response(JSON.stringify({ error: "Authentication required." }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const { sessionId, language_id, source_code } = await req.json();
 
     if (!sessionId || !language_id || typeof source_code !== "string") {
@@ -19,7 +28,7 @@ export async function POST(req: NextRequest) {
     const stream = new ReadableStream({
       start(controller) {
         const success = createInteractiveSession(
-          sessionId,
+          `${currentUser.id}:${sessionId}`,
           language_id,
           cleanSourceCode,
           (chunk) => {

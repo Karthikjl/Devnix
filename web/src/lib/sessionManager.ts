@@ -1,4 +1,5 @@
-import { spawn, spawnSync, ChildProcess, execSync } from "child_process";
+import { ChildProcess } from "child_process";
+import { runnerSpawn, runnerSpawnSync, RUNNER_NAME } from "./runner";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -24,23 +25,7 @@ if (!globalSessions.__devnix_sessions) {
 export const sessions = globalSessions.__devnix_sessions;
 
 function getRunningWorkerContainer(): string | null {
-  try {
-    const res = spawnSync("docker", ["ps", "--format", "{{.Names}}"], {
-      encoding: "utf-8",
-      timeout: 3000,
-    });
-    if (res.stdout) {
-      const names = res.stdout.trim().split(/\r?\n/).map((n) => n.trim()).filter(Boolean);
-      // Prioritize native runner container, then fallback to worker/server
-      const runner = names.find((n) => n.includes("runner"));
-      if (runner) return runner;
-      const worker = names.find((n) => n.includes("worker") || n.includes("server") || n.includes("judge0"));
-      if (worker) return worker;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  return RUNNER_NAME;
 }
 
 const CONTAINER_ENV_PATH = "export PATH=/usr/local/rust-1.40.0/bin:/usr/local/go-1.13.5/bin:/usr/local/php-7.4.1/bin:/usr/local/ruby-2.7.0/bin:/usr/local/openjdk13/bin:/usr/local/node-12.14.0/bin:/usr/local/python-3.8.1/bin:/usr/local/bin:/usr/bin:/bin:$PATH";
@@ -106,56 +91,56 @@ export function createInteractiveSession(
         case 48:
         case 49:
           compileCmd = `${CONTAINER_ENV_PATH}; gcc -O2 "${containerFile}.c" -o "${containerFile}.exe"`;
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${TIMEOUT_WRAPPER} "${containerFile}.exe"`];
+          execArgs = ["sh", "-c", `${TIMEOUT_WRAPPER} "${containerFile}.exe"`];
           break;
 
         case 54: // C++
         case 52:
         case 53:
           compileCmd = `${CONTAINER_ENV_PATH}; g++ -O2 "${containerFile}.cpp" -o "${containerFile}.exe"`;
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${TIMEOUT_WRAPPER} "${containerFile}.exe"`];
+          execArgs = ["sh", "-c", `${TIMEOUT_WRAPPER} "${containerFile}.exe"`];
           break;
 
         case 62: { // Java
           const classMatch = codeToWrite.match(/public\s+class\s+([A-Za-z0-9_]+)/) || codeToWrite.match(/class\s+([A-Za-z0-9_]+)/);
           const javaClassName = classMatch ? classMatch[1] : "Main";
           compileCmd = `${CONTAINER_ENV_PATH}; javac "${containerFile}/${javaClassName}.java"`;
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} java -cp "${containerFile}" ${javaClassName}`];
+          execArgs = ["sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} java -cp "${containerFile}" ${javaClassName}`];
           break;
         }
 
         case 73: // Rust
           compileCmd = `${CONTAINER_ENV_PATH}; rustc -O "${containerFile}.rs" -o "${containerFile}.exe"`;
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${TIMEOUT_WRAPPER} "${containerFile}.exe"`];
+          execArgs = ["sh", "-c", `${TIMEOUT_WRAPPER} "${containerFile}.exe"`];
           break;
 
         case 60: // Go
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} go run "${containerFile}.go"`];
+          execArgs = ["sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} go run "${containerFile}.go"`];
           break;
 
         case 71: // Python
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} python3 -u "${containerFile}.py"`];
+          execArgs = ["sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} python3 -u "${containerFile}.py"`];
           break;
 
         case 63: // JavaScript
         case 74: // TypeScript
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} node "${containerFile}.js"`];
+          execArgs = ["sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} node "${containerFile}.js"`];
           break;
 
         case 72: // Ruby
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} ruby "${containerFile}.rb"`];
+          execArgs = ["sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} ruby "${containerFile}.rb"`];
           break;
 
         case 68: // PHP
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} php "${containerFile}.php"`];
+          execArgs = ["sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} php "${containerFile}.php"`];
           break;
 
         case 46: // Bash
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${TIMEOUT_WRAPPER} bash "${containerFile}.sh"`];
+          execArgs = ["sh", "-c", `${TIMEOUT_WRAPPER} bash "${containerFile}.sh"`];
           break;
 
         default:
-          execArgs = ["exec", "-i", workerContainer, "sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} python3 -u "${containerFile}.py"`];
+          execArgs = ["sh", "-c", `${CONTAINER_ENV_PATH}; ${TIMEOUT_WRAPPER} python3 -u "${containerFile}.py"`];
           break;
       }
 
@@ -170,15 +155,15 @@ export function createInteractiveSession(
       if (langId === 62) {
         const classMatch = codeToWrite.match(/public\s+class\s+([A-Za-z0-9_]+)/) || codeToWrite.match(/class\s+([A-Za-z0-9_]+)/);
         const javaClassName = classMatch ? classMatch[1] : "Main";
-        spawnSync("docker", ["exec", "-i", workerContainer, "mkdir", "-p", containerFile], { encoding: "utf-8" });
-        spawnSync("docker", ["exec", "-i", workerContainer, "sh", "-c", `cat > "${containerFile}/${javaClassName}.java"`], {
+        runnerSpawnSync(["mkdir", "-p", containerFile], { encoding: "utf-8" });
+        runnerSpawnSync(["sh", "-c", `cat > "${containerFile}/${javaClassName}.java"`], {
           input: codeToWrite,
           encoding: "utf-8",
           timeout: 4000,
         });
       } else {
         const ext = extMap[langId] || "py";
-        spawnSync("docker", ["exec", "-i", workerContainer, "sh", "-c", `cat > "${containerFile}.${ext}"`], {
+        runnerSpawnSync(["sh", "-c", `cat > "${containerFile}.${ext}"`], {
           input: codeToWrite,
           encoding: "utf-8",
           timeout: 4000,
@@ -187,14 +172,14 @@ export function createInteractiveSession(
 
       // If compilation step required, run it
       if (compileCmd) {
-        const compileProc = spawnSync("docker", ["exec", "-i", workerContainer, "sh", "-c", compileCmd], {
+        const compileProc = runnerSpawnSync(["sh", "-c", compileCmd], {
           encoding: "utf-8",
           timeout: 8000,
         });
 
         if (compileProc.status !== 0) {
           const errOutput = compileProc.stderr || compileProc.stdout || "Compilation failed";
-          spawnSync("docker", ["exec", workerContainer, "rm", "-rf", `${containerFile}*`]);
+          runnerSpawnSync(["sh", "-c", `rm -rf "${containerFile}"*`]);
           onData({ type: "stderr", text: errOutput });
           onData({ type: "exit", text: "", code: 1 });
           return true;
@@ -202,7 +187,7 @@ export function createInteractiveSession(
       }
 
       // Spawn interactive child process
-      const child = spawn("docker", execArgs, {
+      const child = runnerSpawn(execArgs, {
         windowsHide: true,
         env: {
           ...process.env,
@@ -311,7 +296,7 @@ export function createInteractiveSession(
   // If no container is available, do not fallback to host execution
   onData({
     type: "stderr",
-    text: "Error: Judge0 Compiler container is offline or unreachable. Please ensure Docker containers are running.\n",
+    text: "Error: Code runner is offline or unreachable. Please try again shortly.\n",
   });
   onData({ type: "exit", text: "", code: 1 });
   return false;
@@ -349,9 +334,7 @@ function cleanupSession(sessionId: string) {
   if (session) {
     if (session.containerCleanupDir && session.containerName) {
       try {
-        spawnSync("docker", [
-          "exec",
-          session.containerName,
+        runnerSpawnSync([
           "sh",
           "-c",
           `pkill -9 -f "${session.containerCleanupDir}" || true; rm -rf "${session.containerCleanupDir}"*`

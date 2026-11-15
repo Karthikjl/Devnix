@@ -1,27 +1,49 @@
 services:
-  # 1. Devnix Web Studio (Next.js)
+  # 1. Devnix Web Studio (Next.js) - no Docker socket; runs code via the runner agent
   web:
     build:
       context: ./web
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       - PORT=3000
       - NODE_ENV=production
       - JUDGE0_URL=http://server:2358
       - DEVNIX_DB_PATH=/app/data/devnix.db
+      - DEVNIX_RUNNER_HOST=runner
+      - DEVNIX_RUNNER_PORT=7070
+      - DEVNIX_RUNNER_TOKEN=${RUNNER_TOKEN:?set RUNNER_TOKEN in .env}
     volumes:
       - devnix-data:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - default
+      - sandbox
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
   # 2. Universal Native Multi-Arch Execution Engine (ARM64 + x86_64)
+  #    Isolated: no internet, non-root, read-only root FS, resource limits
   runner:
     build:
       context: ./runner
       dockerfile: Dockerfile
-    restart: always
-    volumes:
-      - isolate-data:/tmp/sandbox
+    environment:
+      - RUNNER_TOKEN=${RUNNER_TOKEN:?set RUNNER_TOKEN in .env}
+    networks:
+      - sandbox
+    read_only: true
+    tmpfs:
+      - /tmp:exec,mode=1777,size=512m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: 1.5
+    restart: unless-stopped
 
   # 3. Judge0 API Server (x86_64 only)
   server:
@@ -88,8 +110,13 @@ services:
       timeout: 5s
       retries: 5
 
+networks:
+  # Internal-only network: the runner can talk to web, but has no internet access
+  sandbox:
+    internal: true
+
 volumes:
   devnix-data:
   postgres-data:
-  redis-data: 
+  redis-data:
   isolate-data:

@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { tracePythonDynamic, traceJavaScriptDynamic, traceBashDynamic, DynamicTraceEvent } from "@/lib/dynamicTracer";
 import { generateGenericCodeTrace, TraceData, TraceStep, TraceArrayState, TracePointer } from "@/lib/traceEngine";
+import { getCurrentUser } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    }
+
     const { language_id, source_code, stdin, language_name } = await req.json();
 
     if (!source_code || typeof source_code !== "string") {

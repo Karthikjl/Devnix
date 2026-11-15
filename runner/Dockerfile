@@ -1,6 +1,7 @@
 # ==============================================================================
 # DEVNIX Multi-Language Universal Native Runner Container
 # Compiles & executes natively across ARM64, AMD64, x86_64 with ZERO emulation
+# User code runs as an unprivileged user via the runner agent (no Docker socket)
 # ==============================================================================
 FROM alpine:3.20
 
@@ -19,8 +20,15 @@ RUN apk add --no-cache \
     ruby \
     php \
     bash \
-    coreutils
+    coreutils \
+    procps
 
-WORKDIR /tmp/sandbox
+RUN adduser -D -H -u 10001 sandbox
+COPY agent.js /opt/devnix/agent.js
 
-CMD ["tail", "-f", "/dev/null"]
+ENV HOME=/tmp
+USER 10001
+WORKDIR /tmp
+EXPOSE 7070
+
+CMD ["node", "/opt/devnix/agent.js"]

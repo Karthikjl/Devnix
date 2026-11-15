@@ -101,7 +101,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: web
-          image: devnix-web:1.1.0
+          image: devnix-web:1.1.2
           imagePullPolicy: IfNotPresent
           env:
             - { name: PORT, value: "3000" }
